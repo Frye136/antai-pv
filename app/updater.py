@@ -1,0 +1,116 @@
+"""Mises à jour automatiques depuis les « Releases » GitHub du projet.
+
+Une release publiée par l'intégration continue contient :
+  - AntaiPV.exe          : l'exécutable
+  - AntaiPV.exe.sha256   : son empreinte SHA-256 (vérifiée avant installation)
+
+Seule requête réseau faite par le logiciel (hors envoi des e-mails) : lecture de la dernière release sur
+api.github.com. Aucune donnée n'est transmise. Désactivable dans Paramètres > Mises à jour.
+"""
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import urllib.request
+from pathlib import Path
+
+from . import config
+
+API_LATEST = f"https://api.github.com/repos/{config.GITHUB_REPO}/releases/latest"
+EXE_NAME = "AntaiPV.exe"
+TIMEOUT = 15
+
+
+def is_frozen() -> bool:
+    """Vrai pour l'exécutable PyInstaller (le seul qui sait se remplacer)."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def parse_version(v: str) -> tuple[int, ...]:
+    nums = re.findall(r"\d+", v or "")
+    return tuple(int(n) for n in nums[:3]) or (0,)
+
+
+def _get(url: str, accept: str = "application/vnd.github+json") -> bytes:
+    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": f"{config.APP_NAME}/{config.VERSION}"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        return r.read()
+
+
+def check() -> dict | None:
+    """Dernière release si elle est plus récente que la version installée, sinon None."""
+    data = json.loads(_get(API_LATEST))
+    tag = data.get("tag_name") or ""
+    if parse_version(tag) <= parse_version(config.VERSION):
+        return None
+    assets = {a["name"]: a["browser_download_url"] for a in data.get("assets", [])}
+    if EXE_NAME not in assets:
+        return None
+    return {
+        "version": tag.lstrip("v"),
+        "notes": (data.get("body") or "").strip(),
+        "page": data.get("html_url"),
+        "exe_url": assets[EXE_NAME],
+        "sha_url": assets.get(EXE_NAME + ".sha256"),
+    }
+
+
+def download(info: dict, progress=None) -> Path:
+    """Télécharge le nouvel exécutable et vérifie son empreinte. Renvoie le chemin du fichier téléchargé."""
+    if not info.get("sha_url"):
+        raise RuntimeError("La release ne contient pas d'empreinte SHA-256 : installation refusée.")
+    expected = _get(info["sha_url"], "application/octet-stream").decode().split()[0].lower()
+    folder = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / config.APP_NAME / "mises_a_jour"
+    folder.mkdir(parents=True, exist_ok=True)
+    dest = folder / f"AntaiPV-{info['version']}.exe"
+    req = urllib.request.Request(info["exe_url"], headers={"User-Agent": f"{config.APP_NAME}/{config.VERSION}"})
+    h = hashlib.sha256()
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r, open(dest, "wb") as f:
+        total = int(r.headers.get("Content-Length") or 0)
+        done = 0
+        while chunk := r.read(1 << 16):
+            f.write(chunk)
+            h.update(chunk)
+            done += len(chunk)
+            if progress and total:
+                progress(f"Téléchargement de la version {info['version']} : {done * 100 // total} %")
+    if h.hexdigest().lower() != expected:
+        dest.unlink(missing_ok=True)
+        raise RuntimeError("Empreinte SHA-256 incorrecte : fichier corrompu ou altéré, installation annulée.")
+    return dest
+
+
+def install(new_exe: Path) -> None:
+    """Remplace l'exécutable courant après sa fermeture puis le relance (script lancé en arrière-plan).
+    L'appelant doit quitter l'application juste après."""
+    if not is_frozen():
+        raise RuntimeError("Mise à jour possible uniquement depuis AntaiPV.exe.")
+    current = Path(sys.executable)
+    if not os.access(current.parent, os.W_OK):
+        raise PermissionError(f"Pas de droit d'écriture sur {current.parent}. Placez AntaiPV.exe dans un dossier "
+                              "personnel (ex. Bureau, Documents) ou mettez à jour manuellement.")
+    # l'exe « onefile » tourne dans deux processus (lanceur + application) qui verrouillent le fichier
+    pids = {os.getpid(), os.getppid()}
+    wait = "\n".join(
+        f':w{pid}\ntasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul && (timeout /t 1 /nobreak >nul & goto w{pid})'
+        for pid in pids)
+    script = Path(tempfile.gettempdir()) / "antaipv_maj.cmd"
+    script.write_text(f"""@echo off
+{wait}
+set n=0
+:copie
+move /Y "{new_exe}" "{current}" >nul 2>&1 && goto ok
+set /a n+=1
+if %n% GEQ 20 goto fin
+timeout /t 1 /nobreak >nul
+goto copie
+:ok
+start "" "{current}"
+:fin
+del "%~f0"
+""", encoding="cp1252")
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
+    subprocess.Popen(["cmd", "/c", str(script)], creationflags=flags, close_fds=True)

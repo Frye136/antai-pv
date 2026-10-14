@@ -1,0 +1,54 @@
+# Publication d'une version : pousser un tag « vX.Y.Z » identique à app/config.py (VERSION).
+#   git tag v1.5.0 && git push origin v1.5.0
+# -> tests, construction de AntaiPV.exe, empreinte SHA-256, release GitHub avec les notes du CHANGELOG.
+# Les logiciels installés la détectent au démarrage (mise à jour automatique).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Dépendances
+        run: python -m pip install -r requirements.txt
+
+      - name: Le tag correspond à la version du code
+        shell: pwsh
+        run: |
+          $v = python -c "from app import config; print(config.VERSION)"
+          if ("v$v" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} différent de config.VERSION ($v)" }
+
+      - name: Tests
+        run: python tests/test_core.py
+
+      - name: Construction de l'exécutable
+        run: python -m PyInstaller --noconfirm --clean AntaiPV.spec
+
+      - name: Empreinte SHA-256 et notes de version
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash dist/AntaiPV.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  AntaiPV.exe" | Out-File -Encoding ascii dist/AntaiPV.exe.sha256
+          python tools/release_notes.py "${{ github.ref_name }}" notes.md
+
+      - name: Release GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ANTAI PV ${{ github.ref_name }}
+          body_path: notes.md
+          files: |
+            dist/AntaiPV.exe
+            dist/AntaiPV.exe.sha256
