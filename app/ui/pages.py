@@ -3,8 +3,9 @@ import webbrowser
 from datetime import date, datetime
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                               QMessageBox, QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtWidgets import (QCheckBox, QFileDialog, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                               QMenu, QMessageBox, QPushButton, QVBoxLayout, QWidget)
 
 from .. import db, parser, plates, referentiel, services
 from .common import (RecordDialog, RowsModel, f_bool, f_date, f_dt, f_money, f_plate, f_statut, make_table,
@@ -315,13 +316,16 @@ class LotsPage(QWidget):
                                             ("#1F6B3A", "#DDF3E4") if k == "depose_le" else None)
         self.view, self.proxy = make_table(self.model, self)
         self.view.doubleClicked.connect(lambda _: self.open_file())
+        QShortcut(QKeySequence.Delete, self.view, self.delete)
+        self.view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.view.customContextMenuRequested.connect(self._context_menu)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(20, 16, 20, 16)
         lay.addLayout(page_header("Lots ANTAI",
                                   button("🌐 Ouvrir l'espace entreprises ANTAI", lambda: webbrowser.open(ANTAI_PRO_URL), accent=True),
                                   button("Ouvrir le fichier", self.open_file), button("Ouvrir le dossier", self.open_folder),
                                   button("✔ Marquer comme déposé", self.mark_deposited, primary=True),
-                                  button("Annuler le lot…", self.cancel_lot)))
+                                  button("🗑 Supprimer…", self.delete)))
         steps = QLabel("<b>Procédure :</b> 1. Générez le CSV depuis « Contraventions » → 2. Connectez-vous à l'espace "
                        "entreprises ANTAI, rubrique désignation, et déposez le fichier → 3. Revenez ici et marquez le lot "
                        "comme déposé → 4. Notifiez les clients.")
@@ -380,18 +384,51 @@ class LotsPage(QWidget):
                 == QMessageBox.Yes:
             self.main.show_pv("Clients à notifier")
 
-    def cancel_lot(self):
-        lot = self._current()
-        if not lot:
+    def _context_menu(self, pos):
+        index = self.view.indexAt(pos)
+        if not index.isValid():
             return
-        if QMessageBox.warning(self, "Annuler le lot", "Les avis de ce lot repasseront « À dénoncer » (à faire si le "
-                               "fichier a été refusé par l'ANTAI). Continuer ?", QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+        if not self.view.selectionModel().isRowSelected(index.row(), index.parent()):
+            self.view.selectRow(index.row())
+        n = len(selected_rows(self.view, self.proxy, self.model))
+        menu = QMenu(self)
+        if n == 1:
+            menu.addAction("Ouvrir le fichier", self.open_file)
+            menu.addAction("✔ Marquer comme déposé", self.mark_deposited)
+            menu.addSeparator()
+        menu.addAction("🗑  Supprimer le lot…" if n == 1 else f"🗑  Supprimer les {n} lots…", self.delete)
+        menu.exec(self.view.viewport().mapToGlobal(pos))
+
+    def delete(self):
+        lots = selected_rows(self.view, self.proxy, self.model)
+        if not lots:
+            QMessageBox.information(self, "Supprimer", "Sélectionnez d'abord le ou les lots à supprimer.")
             return
-        for r in db.q("SELECT id FROM pv WHERE export_id=?", (lot["id"],)):
-            db.update("pv", r["id"], {"statut": "A_DENONCER", "export_id": None, "date_designation": None})
-            db.log("Lot annulé", lot["nom"], r["id"])
-        db.update("exports", lot["id"], {"notes": f"ANNULÉ le {datetime.now():%d/%m/%Y}"})
-        self.main.refresh_all()
+        deposes = [l for l in lots if l["depose_le"]]
+        lignes = [f"• {l['nom']} – {l['nb_pv']} avis – "
+                  + (f"déposé le {f_dt(l['depose_le'])}" if l["depose_le"] else "non déposé") for l in lots[:12]]
+        info = "\n".join(lignes)
+        if len(lots) - len(deposes):
+            info += ("\n\nLots non déposés : leurs avis repassent « À dénoncer » et pourront être inclus dans un "
+                     "nouveau CSV (à faire notamment si l'ANTAI a refusé le fichier).")
+        if deposes:
+            info += ("\n\n⚠ Lots déjà déposés à l'ANTAI : leurs avis restent « Déposé ANTAI ». La suppression "
+                     "n'annule pas les désignations auprès de l'ANTAI.")
+        info += "\n\nLa suppression est inscrite au journal."
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Supprimer")
+        box.setText(f"<b>Supprimer {'ce lot' if len(lots) == 1 else f'ces {len(lots)} lots'} ANTAI ?</b>")
+        box.setInformativeText(info)
+        cb = QCheckBox("Supprimer aussi le fichier CSV")
+        box.setCheckBox(cb)
+        yes = box.addButton("Supprimer", QMessageBox.DestructiveRole)
+        no = box.addButton("Annuler", QMessageBox.RejectRole)
+        box.setDefaultButton(no)
+        box.exec()
+        if box.clickedButton() is yes:
+            services.delete_lots([l["id"] for l in lots], delete_files=cb.isChecked())
+            self.main.refresh_all()
 
 
 class JournalPage(QWidget):

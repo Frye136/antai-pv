@@ -181,6 +181,41 @@ def test_paiement():
     assert db.q1("SELECT statut, traitement FROM pv WHERE id=?", (old,))["statut"] == "A_PAYER"
 
 
+def test_suppression():
+    """Suppression d'avis (PDF conservé ou supprimé, journal) et de lots ANTAI."""
+    from app import antai_export
+    pdf = Path(TMP) / "avis_test.pdf"
+    pdf.write_bytes(b"%PDF-1.4 test")
+    a = db.insert("pv", {"numero_avis": "5000000001", "fichier": str(pdf), "statut": "A_VERIFIER"})
+    b = db.insert("pv", {"numero_avis": "5000000002", "fichier": str(pdf), "statut": "A_VERIFIER"})
+    db.insert("journal", {"pv_id": a, "action": "test"})
+    assert services.delete_pv([a]) == 1 and pdf.exists()               # PDF conservé par défaut
+    assert db.q1("SELECT id FROM pv WHERE id=?", (a,)) is None
+    assert db.q1("SELECT pv_id FROM journal WHERE action='test'")["pv_id"] is None
+    assert "5000000001" in db.q1("SELECT details FROM journal WHERE action='Suppression' ORDER BY id DESC")["details"]
+    services.delete_pv([b], delete_files=True)
+    assert not pdf.exists()
+
+    # lots : non déposé -> avis « À dénoncer » ; déposé -> avis restent « Déposé ANTAI »
+    veh = db.q1("SELECT id FROM vehicules WHERE immatriculation='GA123BC'")["id"]
+    k = db.q1("SELECT id, client_id FROM contrats WHERE numero='K1'")
+    ids = [db.insert("pv", {"numero_avis": f"600000000{n}", "immatriculation": "GA123BC", "vehicule_id": veh,
+                            "contrat_id": k["id"], "client_id": k["client_id"], "date_avis": "2022-02-18",
+                            "date_infraction": "2022-02-15", "heure_infraction": "10:00", "statut": "A_DENONCER",
+                            "traitement": "DESIGNATION"}) for n in (1, 2)]
+    f1 = antai_export.generate(ids[:1])[0]
+    f2 = antai_export.generate(ids[1:])[0]
+    lot1 = db.q1("SELECT export_id FROM pv WHERE id=?", (ids[0],))["export_id"]
+    lot2 = db.q1("SELECT export_id FROM pv WHERE id=?", (ids[1],))["export_id"]
+    db.update("exports", lot2, {"depose_le": "2022-02-20 10:00"})
+    db.update("pv", ids[1], {"statut": "DEPOSE"})
+    assert services.delete_lots([lot1, lot2], delete_files=True) == 2
+    assert db.q1("SELECT statut, export_id FROM pv WHERE id=?", (ids[0],))["statut"] == "A_DENONCER"
+    r2 = db.q1("SELECT statut, export_id FROM pv WHERE id=?", (ids[1],))
+    assert r2["statut"] == "DEPOSE" and r2["export_id"] is None
+    assert not f1.exists() and not f2.exists() and db.q1("SELECT COUNT(*) n FROM exports")["n"] == 1  # lot du pipeline
+
+
 def test_updater():
     """Comparaison de versions et lecture d'une release GitHub (réseau simulé)."""
     import hashlib
@@ -211,5 +246,6 @@ if __name__ == "__main__":
     test_regles_antai()
     test_pipeline(sys.argv[1] if len(sys.argv) > 1 else None)
     test_paiement()
+    test_suppression()
     test_updater()
     print("OK — tous les tests passent")

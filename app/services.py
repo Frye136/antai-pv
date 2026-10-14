@@ -169,6 +169,60 @@ def reread(pv_id: int) -> str:
     return identify(pv_id)
 
 
+def delete_pv(pv_ids: list[int], delete_files: bool = False) -> int:
+    """Supprime des avis de la base (trace conservée dans le journal). `delete_files` : supprime aussi le PDF archivé.
+    Un avis supprimé peut être réimporté depuis son scan."""
+    n = 0
+    for i in pv_ids:
+        pv = db.q1("SELECT * FROM pv WHERE id=?", (i,))
+        if not pv:
+            continue
+        detail = (f"avis {pv['numero_avis'] or '?'} – {plates.display(pv['immatriculation'])} – "
+                  f"{db.STATUTS.get(pv['statut'], pv['statut'])}")
+        if delete_files and pv["fichier"]:
+            try:
+                Path(pv["fichier"]).unlink(missing_ok=True)
+                detail += " – PDF supprimé"
+            except OSError as e:
+                detail += f" – PDF non supprimé ({e})"
+        elif pv["fichier"]:
+            detail += f" – PDF conservé : {pv['fichier']}"
+        db.execute("DELETE FROM pv WHERE id=?", (i,))
+        db.execute("UPDATE journal SET pv_id=NULL WHERE pv_id=?", (i,))  # l'historique reste lisible
+        db.log("Suppression", detail)
+        n += 1
+    return n
+
+
+def delete_lots(export_ids: list[int], delete_files: bool = False) -> int:
+    """Supprime des lots ANTAI. Lot non déposé : ses avis repassent « À dénoncer » (à régénérer).
+    Lot déjà déposé : ses avis restent « Déposé ANTAI » (la désignation a eu lieu), seul le lien au lot disparaît.
+    `delete_files` : supprime aussi le fichier CSV."""
+    n = 0
+    for i in export_ids:
+        lot = db.q1("SELECT * FROM exports WHERE id=?", (i,))
+        if not lot:
+            continue
+        nom = Path(lot["fichier"] or "").name
+        for r in db.q("SELECT id, statut FROM pv WHERE export_id=?", (i,)):
+            upd = {"export_id": None, "updated_at": now()}
+            if not lot["depose_le"] and r["statut"] == "EXPORTE":
+                upd.update(statut="A_DENONCER", date_designation=None)
+            db.update("pv", r["id"], upd)
+            db.log("Lot supprimé", f"{nom} – avis " + ("à redénoncer" if "statut" in upd else "inchangé"), r["id"])
+        detail = f"{nom} ({lot['nb_pv']} avis, {'déposé le ' + lot['depose_le'] if lot['depose_le'] else 'non déposé'})"
+        if delete_files and lot["fichier"]:
+            try:
+                Path(lot["fichier"]).unlink(missing_ok=True)
+                detail += " – CSV supprimé"
+            except OSError as e:
+                detail += f" – CSV non supprimé ({e})"
+        db.execute("DELETE FROM exports WHERE id=?", (i,))
+        db.log("Suppression de lot", detail)
+        n += 1
+    return n
+
+
 def rename_archive(pv_id: int) -> None:
     """Renomme le PDF archivé après correction du n° / de la plaque."""
     pv = db.q1("SELECT * FROM pv WHERE id=?", (pv_id,))

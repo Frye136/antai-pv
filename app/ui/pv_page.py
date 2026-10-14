@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pymupdf
 from PySide6.QtCore import QDate, Qt, QTimer
-from PySide6.QtGui import QAction, QImage, QPixmap
+from PySide6.QtGui import QAction, QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDateEdit, QDialog, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
                                QInputDialog, QLabel, QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
                                QScrollArea, QSplitter, QTabWidget, QVBoxLayout, QWidget)
@@ -145,6 +145,9 @@ class PvPage(QWidget):
         self.model.color_fn = self._color
         self.view, self.proxy = make_table(self.model, self)
         self.view.doubleClicked.connect(self.open_detail)
+        QShortcut(QKeySequence.Delete, self.view, self.delete)
+        self.view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.view.customContextMenuRequested.connect(self._context_menu)
         self.search.textChanged.connect(self.proxy.setFilterFixedString)
         self.search.textChanged.connect(lambda _: self._update_count())
 
@@ -155,7 +158,8 @@ class PvPage(QWidget):
         lay.addWidget(self.make_drop_zone(compact=True))
         lay.addLayout(bar)
         lay.addWidget(self.view, 1)
-        hint = QLabel("Double-cliquez sur un avis pour le vérifier. Sélection multiple : Ctrl / Maj + clic.  "
+        hint = QLabel("Double-cliquez sur un avis pour le vérifier, clic droit pour plus d'actions, Suppr pour supprimer. "
+                      "Sélection multiple : Ctrl / Maj + clic.  "
                       "Le CSV et les notifications portent sur la sélection (ou, à défaut, sur tous les avis éligibles affichés).")
         hint.setObjectName("hint")
         lay.addWidget(hint)
@@ -430,17 +434,28 @@ class PvPage(QWidget):
             db.update("pv", r["id"], {"refacture": 1})
         self.main.status(f"{len(rows)} avis marqué(s) refacturé(s).")
 
+    def _context_menu(self, pos):
+        index = self.view.indexAt(pos)
+        if not index.isValid():
+            return
+        if not self.view.selectionModel().isRowSelected(index.row(), index.parent()):
+            self.view.selectRow(index.row())
+        n = len(selected_rows(self.view, self.proxy, self.model))
+        menu = QMenu(self)
+        if n == 1:
+            menu.addAction("Ouvrir la fiche", lambda: self.open_detail(index))
+            menu.addSeparator()
+        menu.addAction("Changer le statut…", self.change_status)
+        menu.addAction("🗑  Supprimer…" if n == 1 else f"🗑  Supprimer les {n} avis…", self.delete)
+        menu.exec(self.view.viewport().mapToGlobal(pos))
+
     def delete(self):
         rows = selected_rows(self.view, self.proxy, self.model)
         if not rows:
+            QMessageBox.information(self, "Supprimer", "Sélectionnez d'abord le ou les avis à supprimer.")
             return
-        if QMessageBox.warning(self, "Supprimer", f"Supprimer définitivement {len(rows)} avis de la base ?\n"
-                               "(les PDF archivés sont conservés)", QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
-            return
-        for r in rows:
-            db.execute("DELETE FROM pv WHERE id=?", (r["id"],))
-            db.log("Suppression", f"avis {r['numero_avis']} – {r['fichier']}")
-        self.main.refresh_all()
+        if delete_with_confirmation(self, rows):
+            self.main.refresh_all()
 
     def export_excel(self):
         path, _ = QFileDialog.getSaveFileName(self, "Exporter", f"contraventions_{date.today():%Y%m%d}.xlsx", "Excel (*.xlsx)")
@@ -637,12 +652,16 @@ class PvDialog(QDialog):
         b_save.clicked.connect(self.save_and_close)
         b_close = QPushButton("Fermer")
         b_close.clicked.connect(self.reject)
+        b_del = QPushButton("🗑  Supprimer")
+        b_del.setToolTip("Supprimer cet avis de la base (confirmation demandée)")
+        b_del.clicked.connect(self.delete)
         btns = QHBoxLayout()
         btns.addWidget(b_loc)
         btns.addWidget(b_reread)
         btns.addWidget(b_reid)
         btns.addWidget(b_mail)
         btns.addStretch()
+        btns.addWidget(b_del)
         btns.addWidget(b_close)
         btns.addWidget(b_save)
 
@@ -789,6 +808,11 @@ class PvDialog(QDialog):
             services.rename_archive(self.pv_id)
         self.pv = db.q1("SELECT * FROM pv WHERE id=?", (self.pv_id,))
         return True
+
+    def delete(self):
+        row = dict(db.q1(PV_SQL + " WHERE pv.id=?", (self.pv_id,)))
+        if delete_with_confirmation(self, [row]):
+            self.accept()
 
     def save_and_close(self):
         if self.save():
@@ -977,3 +1001,39 @@ class DateDialog(_SmallDialog):
 
     def value(self):
         return self.date.date().toPython().isoformat()
+
+
+ENGAGES = {"EXPORTE": "exporté dans un CSV", "DEPOSE": "déposé à l'ANTAI", "PAYE": "payé",
+           "REFACTURE": "refacturé", "CLOS": "clos"}
+
+
+def delete_with_confirmation(parent, rows: list[dict]) -> bool:
+    """Demande confirmation (avec avertissement si des avis sont déjà engagés) puis supprime. Renvoie True si supprimé."""
+    lignes = [f"• {r['numero_avis'] or '(sans n°)'} – {plates.display(r['immatriculation'])} – "
+              f"{parser.fmt_date(r['date_infraction'])} – {db.STATUTS.get(r['statut'], r['statut'])}" for r in rows[:12]]
+    if len(rows) > 12:
+        lignes.append(f"… et {len(rows) - 12} autre(s)")
+    engages = [r for r in rows if r["statut"] in ENGAGES]
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Warning)
+    box.setWindowTitle("Supprimer")
+    box.setText(f"<b>Supprimer définitivement {'cet avis' if len(rows) == 1 else f'ces {len(rows)} avis'} ?</b>")
+    info = "\n".join(lignes)
+    if engages:
+        etats = ", ".join(sorted({ENGAGES[r["statut"]] for r in engages}))
+        info += (f"\n\n⚠ {len(engages)} avis sont déjà engagés ({etats}) : la suppression ne les annule pas"
+                 if len(engages) > 1 else
+                 f"\n\n⚠ Cet avis est déjà engagé ({etats}) : la suppression ne l'annule pas")
+        info += " auprès de l'ANTAI ni dans votre facturation."
+    info += "\n\nLa suppression est inscrite au journal. Un avis supprimé peut être réimporté depuis son scan."
+    box.setInformativeText(info)
+    cb = QCheckBox("Supprimer aussi le PDF archivé")
+    box.setCheckBox(cb)
+    yes = box.addButton("Supprimer", QMessageBox.DestructiveRole)
+    no = box.addButton("Annuler", QMessageBox.RejectRole)
+    box.setDefaultButton(no)
+    box.exec()
+    if box.clickedButton() is not yes:
+        return False
+    services.delete_pv([r["id"] for r in rows], delete_files=cb.isChecked())
+    return True

@@ -3,6 +3,15 @@
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque section `## [x.y.z]` sert de notes à la
 release GitHub correspondante.
 
+## [1.7.0] - 2026-10-14
+
+- Suppression d'un ou plusieurs avis avec confirmation : touche Suppr, clic droit ou bouton « Supprimer » de la
+  fiche. Avertissement si l'avis est déjà exporté, déposé, payé ou refacturé ; option pour supprimer aussi le PDF.
+- Suppression des lots ANTAI avec confirmation (Suppr, clic droit, bouton) : les avis d'un lot non déposé
+  repassent « À dénoncer », ceux d'un lot déposé restent « Déposé ANTAI » ; option pour supprimer le CSV.
+  Remplace « Annuler le lot ».
+- Toutes les suppressions sont inscrites au journal.
+
 ## [1.6.0] - 2026-10-14
 
 - Installateur Windows `AntaiPV-Setup.exe` : installation dans le profil de l'utilisateur (sans droits
