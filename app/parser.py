@@ -141,7 +141,8 @@ def parse(text: str, fleet: list[str] | None = None) -> dict:
     cands = plates.find_candidates(flat)
     # Les plaques précédées du libellé « Immatriculation : » passent en priorité
     labelled: list[str] = []
-    for lm in re.finditer(r"immatricul\w*\s*[:.]\s*([A-Z0-9][A-Z0-9 \-]{5,11})", flat, re.I):
+    # libellé tolérant à l'OCR : « Immatriculation : », « lmmatriculation 7FL-684-AV », « •4mmatriculation BY-… »
+    for lm in re.finditer(r"[il1|4]mmatricul\w*[ \t]*[:.•\-]?[ \t]*([A-Z0-9][A-Z0-9 \-]{5,12})", flat, re.I):
         labelled += [c for c in plates.find_candidates(lm.group(1)) if c not in labelled]
     cands = labelled + [c for c in cands if c not in labelled]
     if cands:
