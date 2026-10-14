@@ -3,6 +3,11 @@
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque section `## [x.y.z]` sert de notes à la
 release GitHub correspondante.
 
+## [1.5.2] - 2026-10-14
+
+- Les fichiers téléchargés par les mises à jour sont supprimés au démarrage (évite 80 Mo restants par mise à jour
+  quand l'antivirus garde le fichier ouvert).
+
 ## [1.5.1] - 2026-10-14
 
 - Mise à jour automatique fiabilisée : l'exécutable en cours est renommé puis remplacé immédiatement

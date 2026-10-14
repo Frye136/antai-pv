@@ -65,7 +65,7 @@ def download(info: dict, progress=None) -> Path:
     if not info.get("sha_url"):
         raise RuntimeError("La release ne contient pas d'empreinte SHA-256 : installation refusée.")
     expected = _get(info["sha_url"], "application/octet-stream").decode().split()[0].lower()
-    folder = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / config.APP_NAME / "mises_a_jour"
+    folder = _download_dir()
     folder.mkdir(parents=True, exist_ok=True)
     dest = folder / f"AntaiPV-{info['version']}.exe"
     req = urllib.request.Request(info["exe_url"], headers={"User-Agent": f"{config.APP_NAME}/{config.VERSION}"})
@@ -107,14 +107,26 @@ def install(new_exe: Path, relaunch: bool = True) -> None:
     except OSError:
         os.replace(old, current)  # retour à l'état initial
         raise
-    new_exe.unlink(missing_ok=True)
+    try:
+        new_exe.unlink(missing_ok=True)
+    except OSError:  # encore ouvert par l'antivirus : supprimé au prochain démarrage (cleanup)
+        pass
     if relaunch:
         flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
         subprocess.Popen([str(current), "--apres-maj"], creationflags=flags, close_fds=True, cwd=str(current.parent))
 
 
+def _download_dir() -> Path:
+    return Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / config.APP_NAME / "mises_a_jour"
+
+
 def cleanup() -> None:
-    """Au démarrage : supprime l'ancien exécutable laissé par une mise à jour."""
+    """Au démarrage : supprime les téléchargements restants et l'ancien exécutable laissé par une mise à jour."""
+    for f in _download_dir().glob("AntaiPV-*.exe") if _download_dir().is_dir() else []:
+        try:
+            f.unlink()
+        except OSError:
+            pass
     if is_frozen():
         old = Path(sys.executable).with_name(Path(sys.executable).stem + ".old.exe")
         for _ in range(10):  # l'ancienne instance peut mettre quelques secondes à se fermer
