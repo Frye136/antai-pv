@@ -1,11 +1,12 @@
 """ANTAI PV — point d'entrée."""
 import sys
+import time
 import traceback
 
 from PySide6.QtCore import QLocale
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from app import config, db
+from app import config, db, updater
 from app.ui.common import STYLE
 from app.ui.main_window import MainWindow
 
@@ -38,10 +39,20 @@ def diagnostic(pdfs: list[str]) -> None:
 
 
 def main():
+    updater.cleanup()  # ancien exécutable laissé par une mise à jour
+    if "--mettre-a-jour" in sys.argv:
+        # mise à jour silencieuse (dépannage à distance, script) : installe la dernière release si elle est plus récente
+        info = updater.check()
+        if info:
+            updater.install(updater.download(info), relaunch=False)
+        return
     if "--diagnostic" in sys.argv:
         app = QApplication(sys.argv)
         diagnostic([a for a in sys.argv[1:] if not a.startswith("--")])
         return
+    apres_maj = "--apres-maj" in sys.argv
+    if apres_maj:  # relancé par une mise à jour : laisser l'ancienne version se fermer
+        time.sleep(2)
     QLocale.setDefault(QLocale(QLocale.French, QLocale.France))
     app = QApplication(sys.argv)
     app.setApplicationName(config.APP_NAME)
@@ -55,6 +66,9 @@ def main():
         pass
     win = MainWindow()
     win.show()
+    if apres_maj:
+        db.log("Mise à jour installée", f"version {config.VERSION}")
+        win.status(f"Mise à jour installée : version {config.VERSION}")
     sys.exit(app.exec())
 
 

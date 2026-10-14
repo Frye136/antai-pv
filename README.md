@@ -82,6 +82,7 @@ python tests\test_core.py [avis.pdf]                # tests (+ test optionnel su
 .\build.ps1                                         # tests + dist\AntaiPV.exe
 python tools\demo_data.py [--importer]              # jeu de démonstration fictif (demo\*.xlsx)
 dist\AntaiPV.exe --diagnostic avis.pdf              # test OCR -> %TEMP%\antaipv_diagnostic.txt
+AntaiPV.exe --mettre-a-jour                         # mise à jour silencieuse vers la dernière release
 ```
 
 | Module | Rôle |

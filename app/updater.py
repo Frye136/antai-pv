@@ -11,9 +11,11 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 
@@ -83,34 +85,41 @@ def download(info: dict, progress=None) -> Path:
     return dest
 
 
-def install(new_exe: Path) -> None:
-    """Remplace l'exécutable courant après sa fermeture puis le relance (script lancé en arrière-plan).
+def install(new_exe: Path, relaunch: bool = True) -> None:
+    """Remplace l'exécutable en cours d'exécution puis relance la nouvelle version.
+
+    Windows interdit d'écraser un .exe ouvert mais autorise de le renommer : l'exe courant devient
+    « AntaiPV.old.exe » (supprimé au démarrage suivant), la nouvelle version prend sa place immédiatement.
+    Aucun script externe : rien ne peut être interrompu par la fermeture de l'application.
     L'appelant doit quitter l'application juste après."""
     if not is_frozen():
         raise RuntimeError("Mise à jour possible uniquement depuis AntaiPV.exe.")
     current = Path(sys.executable)
-    if not os.access(current.parent, os.W_OK):
-        raise PermissionError(f"Pas de droit d'écriture sur {current.parent}. Placez AntaiPV.exe dans un dossier "
-                              "personnel (ex. Bureau, Documents) ou mettez à jour manuellement.")
-    # l'exe « onefile » tourne dans deux processus (lanceur + application) qui verrouillent le fichier
-    pids = {os.getpid(), os.getppid()}
-    wait = "\n".join(
-        f':w{pid}\ntasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul && (timeout /t 1 /nobreak >nul & goto w{pid})'
-        for pid in pids)
-    script = Path(tempfile.gettempdir()) / "antaipv_maj.cmd"
-    script.write_text(f"""@echo off
-{wait}
-set n=0
-:copie
-move /Y "{new_exe}" "{current}" >nul 2>&1 && goto ok
-set /a n+=1
-if %n% GEQ 20 goto fin
-timeout /t 1 /nobreak >nul
-goto copie
-:ok
-start "" "{current}"
-:fin
-del "%~f0"
-""", encoding="cp1252")
-    flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
-    subprocess.Popen(["cmd", "/c", str(script)], creationflags=flags, close_fds=True)
+    old = current.with_name(current.stem + ".old.exe")
+    try:
+        old.unlink(missing_ok=True)
+        os.replace(current, old)
+    except OSError as e:
+        raise PermissionError(f"Impossible de remplacer {current} ({e}). Placez AntaiPV.exe dans un dossier "
+                              "personnel (Bureau, Documents…) ou mettez à jour manuellement.") from e
+    try:
+        shutil.copy2(new_exe, current)
+    except OSError:
+        os.replace(old, current)  # retour à l'état initial
+        raise
+    new_exe.unlink(missing_ok=True)
+    if relaunch:
+        flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        subprocess.Popen([str(current), "--apres-maj"], creationflags=flags, close_fds=True, cwd=str(current.parent))
+
+
+def cleanup() -> None:
+    """Au démarrage : supprime l'ancien exécutable laissé par une mise à jour."""
+    if is_frozen():
+        old = Path(sys.executable).with_name(Path(sys.executable).stem + ".old.exe")
+        for _ in range(10):  # l'ancienne instance peut mettre quelques secondes à se fermer
+            try:
+                old.unlink(missing_ok=True)
+                return
+            except OSError:
+                time.sleep(0.5)

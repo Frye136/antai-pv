@@ -3,6 +3,12 @@
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque section `## [x.y.z]` sert de notes à la
 release GitHub correspondante.
 
+## [1.5.1] - 2026-10-14
+
+- Mise à jour automatique fiabilisée : l'exécutable en cours est renommé puis remplacé immédiatement
+  (plus de script externe qui pouvait être interrompu à la fermeture). Ancienne version supprimée au démarrage suivant.
+- Mise à jour silencieuse en ligne de commande : `AntaiPV.exe --mettre-a-jour`.
+
 ## [1.5.0] - 2026-10-14
 
 - Projet publié en open source (licence MIT).
