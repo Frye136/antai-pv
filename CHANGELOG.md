@@ -3,6 +3,14 @@
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque section `## [x.y.z]` sert de notes à la
 release GitHub correspondante.
 
+## [1.7.1] - 2026-10-14
+
+- Correctif : ouvrir ANTAI PV une deuxième fois pendant une mise à jour pouvait provoquer un plantage
+  (« cannot import name '_extra' »). Le logiciel n'accepte plus qu'une seule fenêtre : un nouveau lancement
+  ramène la fenêtre existante au premier plan.
+- La mise à jour refuse de remplacer l'exécutable si une autre copie est ouverte ou en cours de démarrage.
+- Chaque version publiée est désormais lancée par l'intégration continue avant d'être mise en ligne.
+
 ## [1.7.0] - 2026-10-14
 
 - Suppression d'un ou plusieurs avis avec confirmation : touche Suppr, clic droit ou bouton « Supprimer » de la

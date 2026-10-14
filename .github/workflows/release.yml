@@ -37,6 +37,18 @@ jobs:
       - name: Construction de l'exécutable
         run: python -m PyInstaller --noconfirm --clean AntaiPV.spec
 
+      - name: L'exécutable démarre (test de fumée)
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:TEMP "antaipv_diagnostic.txt"
+          Remove-Item $out -ErrorAction SilentlyContinue
+          $p = Start-Process dist/AntaiPV.exe -ArgumentList "--diagnostic","--quiet" -PassThru -Wait
+          $v = python -c "from app import config; print(config.VERSION)"
+          if (-not (Test-Path $out) -or -not ((Get-Content $out -Raw) -match "v$v")) {
+            throw "AntaiPV.exe ne démarre pas correctement (code $($p.ExitCode))"
+          }
+          Get-Content $out
+
       - name: Installateur (Inno Setup)
         shell: pwsh
         run: |

@@ -19,7 +19,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from . import config
+from . import config, instance
 
 API_LATEST = f"https://api.github.com/repos/{config.GITHUB_REPO}/releases/latest"
 EXE_NAME = "AntaiPV.exe"
@@ -95,6 +95,11 @@ def install(new_exe: Path, relaunch: bool = True) -> None:
     if not is_frozen():
         raise RuntimeError("Mise à jour possible uniquement depuis AntaiPV.exe.")
     current = Path(sys.executable)
+    # une autre copie ouverte ou en train de démarrer lirait le nouvel exe en cours de route et planterait
+    others = instance.other_processes(str(current), {os.getpid(), os.getppid()})
+    if others:
+        raise RuntimeError("Une autre fenêtre d'ANTAI PV est ouverte ou en cours de démarrage. "
+                           "Fermez-la, puis relancez la mise à jour (Paramètres > Mises à jour).")
     old = current.with_name(current.stem + ".old.exe")
     try:
         old.unlink(missing_ok=True)
