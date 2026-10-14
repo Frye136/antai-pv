@@ -3,6 +3,13 @@
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque section `## [x.y.z]` sert de notes à la
 release GitHub correspondante.
 
+## [1.7.3] - 2026-10-14
+
+- Correctif du plantage après une mise à jour automatique (« cannot import name '_extra' ») : la nouvelle version,
+  relancée par l'ancienne, réutilisait le dossier temporaire de celle-ci, vidé à sa fermeture. Elle démarre
+  désormais dans un environnement propre, y compris lorsqu'elle est lancée par une version antérieure.
+- `AntaiPV.exe --mettre-a-jour --relancer` : mise à jour silencieuse puis redémarrage de l'application.
+
 ## [1.7.2] - 2026-10-14
 
 - Correctif : corriger la plaque ou le n° d'un avis dans sa fiche provoquait une erreur « fichier utilisé par un
