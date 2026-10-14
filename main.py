@@ -40,6 +40,7 @@ def diagnostic(pdfs: list[str]) -> None:
 
 def main():
     updater.cleanup()  # ancien exécutable laissé par une mise à jour
+    updater.sync_installed_version()
     if "--mettre-a-jour" in sys.argv:
         # mise à jour silencieuse (dépannage à distance, script) : installe la dernière release si elle est plus récente
         info = updater.check()

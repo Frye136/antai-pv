@@ -37,11 +37,22 @@ jobs:
       - name: Construction de l'exécutable
         run: python -m PyInstaller --noconfirm --clean AntaiPV.spec
 
+      - name: Installateur (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          $v = python -c "from app import config; print(config.VERSION)"
+          & $iscc /Q "/DAppVersion=$v" installer\AntaiPV.iss
+          if ($LASTEXITCODE -ne 0) { throw "Échec de l'installateur" }
+
       - name: Empreinte SHA-256 et notes de version
         shell: pwsh
         run: |
-          $h = (Get-FileHash dist/AntaiPV.exe -Algorithm SHA256).Hash.ToLower()
-          "$h  AntaiPV.exe" | Out-File -Encoding ascii dist/AntaiPV.exe.sha256
+          foreach ($f in "AntaiPV.exe", "AntaiPV-Setup.exe") {
+            $h = (Get-FileHash "dist/$f" -Algorithm SHA256).Hash.ToLower()
+            "$h  $f" | Out-File -Encoding ascii "dist/$f.sha256"
+          }
           python tools/release_notes.py "${{ github.ref_name }}" notes.md
 
       - name: Release GitHub
@@ -50,5 +61,7 @@ jobs:
           name: ANTAI PV ${{ github.ref_name }}
           body_path: notes.md
           files: |
+            dist/AntaiPV-Setup.exe
+            dist/AntaiPV-Setup.exe.sha256
             dist/AntaiPV.exe
             dist/AntaiPV.exe.sha256

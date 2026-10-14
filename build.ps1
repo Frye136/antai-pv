@@ -1,4 +1,4 @@
-# Construit dist\AntaiPV.exe (exécutable unique, aucune installation requise sur le poste cible).
+﻿# Construit dist\AntaiPV.exe (exécutable unique, aucune installation requise sur le poste cible).
 # Prérequis : Python 3.11 (py -3.11). L'environnement virtuel est créé hors OneDrive.
 $venv = "$env:LOCALAPPDATA\antai-pv-venv"
 $py = "$venv\Scripts\python.exe"
@@ -15,3 +15,13 @@ if ($LASTEXITCODE -ne 0) { throw "Tests en échec : construction annulée." }
 cmd /c "`"$py`" -m PyInstaller --noconfirm --clean --log-level WARN --workpath `"$env:LOCALAPPDATA\antai-pv-build`" --distpath `"$PSScriptRoot\dist`" `"$PSScriptRoot\AntaiPV.spec`" 2>&1"
 if ($LASTEXITCODE -ne 0) { throw "Échec de PyInstaller." }
 Write-Host "OK : $PSScriptRoot\dist\AntaiPV.exe"
+
+# Installateur (Inno Setup 6, facultatif en local : winget install JRSoftware.InnoSetup)
+$iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe") |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($iscc) {
+    $v = & $py -c "import sys; sys.path.insert(0, r'$PSScriptRoot'); from app import config; print(config.VERSION)"
+    cmd /c "`"$iscc`" /Q /DAppVersion=$v `"$PSScriptRoot\installer\AntaiPV.iss`" 2>&1"
+    if ($LASTEXITCODE -ne 0) { throw "Échec de l'installateur." }
+    Write-Host "OK : $PSScriptRoot\dist\AntaiPV-Setup.exe"
+}

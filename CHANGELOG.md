@@ -3,6 +3,13 @@
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque section `## [x.y.z]` sert de notes à la
 release GitHub correspondante.
 
+## [1.6.0] - 2026-10-14
+
+- Installateur Windows `AntaiPV-Setup.exe` : installation dans le profil de l'utilisateur (sans droits
+  administrateur), menu Démarrer, raccourci Bureau en option, désinstallation depuis « Applications installées ».
+  Les mises à jour automatiques continuent de fonctionner ; la version affichée par Windows suit les mises à jour.
+- L'exécutable autonome `AntaiPV.exe` reste disponible.
+
 ## [1.5.2] - 2026-10-14
 
 - Les fichiers téléchargés par les mises à jour sont supprimés au démarrage (évite 80 Mo restants par mise à jour

@@ -116,6 +116,25 @@ def install(new_exe: Path, relaunch: bool = True) -> None:
         subprocess.Popen([str(current), "--apres-maj"], creationflags=flags, close_fds=True, cwd=str(current.parent))
 
 
+INSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{7D3F6A2B-9C1E-4F5A-8B2D-3E6C1A9F4B70}_is1"
+
+
+def sync_installed_version() -> None:
+    """Version affichée dans « Applications installées » alignée sur la version réelle après une mise à jour
+    automatique (installation par AntaiPV-Setup.exe uniquement)."""
+    if not is_frozen():
+        return
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, INSTALL_KEY, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
+            location = Path(winreg.QueryValueEx(k, "InstallLocation")[0])
+            if location.resolve() == Path(sys.executable).parent.resolve() and \
+                    winreg.QueryValueEx(k, "DisplayVersion")[0] != config.VERSION:
+                winreg.SetValueEx(k, "DisplayVersion", 0, winreg.REG_SZ, config.VERSION)
+    except OSError:
+        pass  # exécutable autonome (pas d'installation) : rien à faire
+
+
 def _download_dir() -> Path:
     return Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / config.APP_NAME / "mises_a_jour"
 

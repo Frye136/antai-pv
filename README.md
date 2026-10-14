@@ -13,10 +13,12 @@ refacturation** au client, notification par e-mail, archivage et suivi.
 
 ## Télécharger
 
-**[⬇ AntaiPV.exe — dernière version](https://github.com/Frye136/antai-pv/releases/latest/download/AntaiPV.exe)**
-(Windows 10/11, pack de langue Français pour l'OCR — présent sur un Windows français).
+**[⬇ Installateur AntaiPV-Setup.exe](https://github.com/Frye136/antai-pv/releases/latest/download/AntaiPV-Setup.exe)**
+— installation sans droits administrateur, menu Démarrer, désinstallation depuis « Applications installées ».
+Ou, sans installation : [AntaiPV.exe](https://github.com/Frye136/antai-pv/releases/latest/download/AntaiPV.exe)
+(à placer dans un dossier personnel). Windows 10/11, pack de langue Français pour l'OCR (présent sur un Windows français).
 
-L'exécutable n'est pas signé : au premier lancement, Windows SmartScreen peut afficher « Windows a protégé votre
+Les fichiers ne sont pas signés : au premier lancement, Windows SmartScreen peut afficher « Windows a protégé votre
 ordinateur » → *Informations complémentaires* → *Exécuter quand même*. Le logiciel se **met ensuite à jour tout seul** :
 au démarrage il signale une nouvelle version, la télécharge, vérifie son empreinte SHA-256 et redémarre.
 
@@ -79,7 +81,7 @@ Python 3.11, PySide6, PyMuPDF, Pillow, OCR Windows (`Windows.Media.Ocr`), openpy
 py -3.11 -m venv .venv && .venv\Scripts\pip install -r requirements.txt
 .venv\Scripts\python main.py                        # lancer depuis les sources
 python tests\test_core.py [avis.pdf]                # tests (+ test optionnel sur un vrai scan)
-.\build.ps1                                         # tests + dist\AntaiPV.exe
+.\build.ps1                                         # tests + dist\AntaiPV.exe (+ AntaiPV-Setup.exe si Inno Setup)
 python tools\demo_data.py [--importer]              # jeu de démonstration fictif (demo\*.xlsx)
 dist\AntaiPV.exe --diagnostic avis.pdf              # test OCR -> %TEMP%\antaipv_diagnostic.txt
 AntaiPV.exe --mettre-a-jour                         # mise à jour silencieuse vers la dernière release
