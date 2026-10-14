@@ -41,7 +41,7 @@ def _fix_siv(a: str, b: str, c: str) -> str | None:
 def find_candidates(text: str) -> list[str]:
     """Toutes les immatriculations plausibles d'un texte (normalisées, sans doublon).
     Les plaques écrites avec tirets (« AB-123-CD », format imprimé sur les avis) passent en premier, même collées à
-    un caractère parasite de l'OCR (« 7FL-684-AV ») ; puis les autres formes, dans l'ordre d'apparition."""
+    un caractère parasite de l'OCR (« 7AB-123-CD ») ; puis les autres formes, dans l'ordre d'apparition."""
     up = text.upper()
     found: list[str] = []
     for m in SIV_DASHED_RE.finditer(up):
