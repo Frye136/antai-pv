@@ -3,6 +3,14 @@
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque section `## [x.y.z]` sert de notes à la
 release GitHub correspondante.
 
+## [1.7.2] - 2026-10-14
+
+- Correctif : corriger la plaque ou le n° d'un avis dans sa fiche provoquait une erreur « fichier utilisé par un
+  autre processus » et créait des copies du PDF. L'aperçu ne verrouille plus le fichier ; le renommage se fait sans
+  copie et, s'il est impossible (PDF ouvert ailleurs), il est simplement reporté et signalé au journal.
+- Lecture de la plaque plus robuste : libellé mal lu par l'OCR (« lmmatriculation », sans deux-points), caractère
+  parasite collé (« 7AB-123-CD ») ; les plaques imprimées avec tirets sont prioritaires.
+
 ## [1.7.1] - 2026-10-14
 
 - Correctif : ouvrir ANTAI PV une deuxième fois pendant une mise à jour pouvait provoquer un plantage

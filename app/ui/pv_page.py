@@ -479,7 +479,9 @@ class PvPage(QWidget):
 class PdfViewer(QWidget):
     def __init__(self, path: str | None):
         super().__init__()
-        self.doc = pymupdf.open(path) if path and Path(path).exists() else None
+        self.path = path
+        # chargé en mémoire : le fichier n'est pas verrouillé (il peut être renommé pendant que la fiche est ouverte)
+        self.doc = pymupdf.open(stream=Path(path).read_bytes(), filetype="pdf") if path and Path(path).exists() else None
         self.page, self.zoom = 0, 1.3
         self.label = QLabel("Fichier introuvable" if not self.doc else "")
         self.label.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
@@ -491,7 +493,7 @@ class PdfViewer(QWidget):
         bar = QHBoxLayout()
         for text, fn in [("◀", lambda: self.go(-1)), ("▶", lambda: self.go(1)),
                          ("−", lambda: self.set_zoom(-0.2)), ("+", lambda: self.set_zoom(0.2)),
-                         ("Ouvrir le PDF", lambda: open_path(path))]:
+                         ("Ouvrir le PDF", lambda: open_path(self.path))]:
             b = QPushButton(text)
             b.clicked.connect(fn)
             bar.addWidget(b)
@@ -530,7 +532,7 @@ class PvDialog(QDialog):
         self.resize(1350, 880)
         self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
 
-        viewer = PdfViewer(self.pv["fichier"])
+        viewer = self.viewer = PdfViewer(self.pv["fichier"])
 
         p = self.pv
         self.f = {}
@@ -807,6 +809,7 @@ class PvDialog(QDialog):
         if {"numero_avis", "immatriculation"} & set(changed):
             services.rename_archive(self.pv_id)
         self.pv = db.q1("SELECT * FROM pv WHERE id=?", (self.pv_id,))
+        self.viewer.path = self.pv["fichier"]
         return True
 
     def delete(self):

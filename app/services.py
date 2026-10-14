@@ -1,5 +1,6 @@
 """Traitements métier : import des scans, archivage, identification du locataire, échéances."""
 import hashlib
+import os
 import re
 import shutil
 from datetime import date, datetime, timedelta
@@ -233,7 +234,13 @@ def rename_archive(pv_id: int) -> None:
     if not cur.exists() or cur.stem.startswith(wanted):
         return
     dest = _archive_path(pv["numero_avis"], pv["immatriculation"], pv["date_avis"])
-    shutil.move(str(cur), dest)
+    if dest.drive.lower() != cur.drive.lower():
+        dest = cur.with_name(dest.name)  # renommage sur place : jamais de copie (pas de doublon si le fichier est ouvert)
+    try:
+        os.replace(cur, dest)
+    except OSError as e:  # fichier ouvert dans un autre logiciel : on garde l'ancien nom
+        db.log("Renommage du PDF impossible", f"{cur.name} -> {dest.name} : {e}", pv_id)
+        return
     db.update("pv", pv_id, {"fichier": str(dest)})
 
 

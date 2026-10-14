@@ -19,6 +19,10 @@ def test_plates():
     assert "GA123BC" in plates.find_candidates("Immatriculation : GA-123-BC")
     assert plates.best_match("GA1Z3BC", ["GA123BC", "AB123CD"])[0] == "GA123BC"
     assert plates.best_match("ZZ999ZZ", ["GA123BC", "AB123CD"])[0] is None
+    # OCR dégradé : « lmmatriculation » sans deux-points, caractère parasite collé, autre suite parasite avant
+    t = "XX ZZ987YY 12\n - .-lmmatriculation 7GA-123-BC\nPays : FRANCE"
+    assert plates.find_candidates(t)[0] == "GA123BC"
+    assert parser.parse(t)["immat_lue"] == "GA123BC"
 
 
 SAMPLE = """Numéro de l'avis
@@ -216,6 +220,30 @@ def test_suppression():
     assert not f1.exists() and not f2.exists() and db.q1("SELECT COUNT(*) n FROM exports")["n"] == 1  # lot du pipeline
 
 
+def test_renommage_archive():
+    """Correction de plaque : le PDF archivé est renommé ; s'il est ouvert ailleurs, ni plantage ni copie."""
+    folder = config.sub("archive") / "2026" / "10"
+    folder.mkdir(parents=True, exist_ok=True)
+    src = folder / "8000000001_AA111AA.pdf"
+    src.write_bytes(b"%PDF-1.4 test")
+    i = db.insert("pv", {"numero_avis": "8000000001", "immatriculation": "AA111AA", "date_avis": "2026-10-07",
+                         "fichier": str(src)})
+    db.update("pv", i, {"immatriculation": "BB222BB"})
+    services.rename_archive(i)
+    new = Path(db.q1("SELECT fichier FROM pv WHERE id=?", (i,))["fichier"])
+    assert new.name == "8000000001_BB222BB.pdf" and new.exists() and not src.exists()
+
+    db.update("pv", i, {"immatriculation": "CC333CC"})
+    with open(new, "rb"):  # fichier ouvert par un autre programme : renommage impossible sous Windows
+        services.rename_archive(i)
+        services.rename_archive(i)  # nouvelle tentative : toujours pas de copie
+    assert db.q1("SELECT fichier FROM pv WHERE id=?", (i,))["fichier"] == str(new)
+    assert sorted(p.name for p in folder.glob("8000000001_*")) == ["8000000001_BB222BB.pdf"]
+    assert "Renommage du PDF impossible" in db.q1("SELECT action FROM journal ORDER BY id DESC")["action"]
+    services.rename_archive(i)  # fichier libéré : le renommage aboutit
+    assert Path(db.q1("SELECT fichier FROM pv WHERE id=?", (i,))["fichier"]).name == "8000000001_CC333CC.pdf"
+
+
 def test_updater():
     """Comparaison de versions et lecture d'une release GitHub (réseau simulé)."""
     import hashlib
@@ -247,5 +275,6 @@ if __name__ == "__main__":
     test_pipeline(sys.argv[1] if len(sys.argv) > 1 else None)
     test_paiement()
     test_suppression()
+    test_renommage_archive()
     test_updater()
     print("OK — tous les tests passent")

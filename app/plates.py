@@ -3,6 +3,7 @@ import re
 
 # SIV (AB-123-CD) et ancien FNI (1234 AB 56 / 123 ABC 45 / 12 ABC 2A)
 SIV_RE = re.compile(r"\b([A-Z0-9]{2})[\s\-.]?([A-Z0-9]{3})[\s\-.]?([A-Z0-9]{2})\b")
+SIV_DASHED_RE = re.compile(r"(?<![A-Z])([A-Z0-9][A-Z])\s?-\s?(\d[\dOQDILTZSBG]{2})\s?-\s?([A-Z][A-Z0-9])(?![A-Z0-9])")
 FNI_RE = re.compile(r"\b(\d{1,4})[\s\-]?([A-Z]{1,3})[\s\-]?(\d{2}|2A|2B)\b")
 
 TO_DIGIT = str.maketrans({"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "T": "1",
@@ -38,9 +39,15 @@ def _fix_siv(a: str, b: str, c: str) -> str | None:
 
 
 def find_candidates(text: str) -> list[str]:
-    """Toutes les immatriculations plausibles d'un texte (normalisées, sans doublon, ordre d'apparition)."""
+    """Toutes les immatriculations plausibles d'un texte (normalisées, sans doublon).
+    Les plaques écrites avec tirets (« AB-123-CD », format imprimé sur les avis) passent en premier, même collées à
+    un caractère parasite de l'OCR (« 7AB-123-CD ») ; puis les autres formes, dans l'ordre d'apparition."""
     up = text.upper()
     found: list[str] = []
+    for m in SIV_DASHED_RE.finditer(up):
+        cand = _fix_siv(*m.groups())
+        if cand and cand not in found:
+            found.append(cand)
     for m in SIV_RE.finditer(up):
         a, b, c = m.groups()
         # au moins un vrai chiffre au milieu et une vraie lettre de chaque côté pour éviter les faux positifs
