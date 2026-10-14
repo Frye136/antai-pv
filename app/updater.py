@@ -19,9 +19,11 @@ import time
 import urllib.request
 from pathlib import Path
 
-from . import config, instance
+from . import config, instance, relance
 
-API_LATEST = f"https://api.github.com/repos/{config.GITHUB_REPO}/releases/latest"
+# ANTAIPV_RELEASE_URL : release simulée pour les tests de bout en bout uniquement
+API_LATEST = (os.environ.get("ANTAIPV_RELEASE_URL")
+              or f"https://api.github.com/repos/{config.GITHUB_REPO}/releases/latest")
 EXE_NAME = "AntaiPV.exe"
 TIMEOUT = 15
 
@@ -117,8 +119,12 @@ def install(new_exe: Path, relaunch: bool = True) -> None:
     except OSError:  # encore ouvert par l'antivirus : supprimé au prochain démarrage (cleanup)
         pass
     if relaunch:
-        flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-        subprocess.Popen([str(current), "--apres-maj"], creationflags=flags, close_fds=True, cwd=str(current.parent))
+        if os.environ.get("ANTAIPV_TEST_RELANCE_ANCIENNE") == "1":
+            # test uniquement : reproduit la relance des versions < 1.7.3 (environnement hérité)
+            subprocess.Popen([str(current), "--apres-maj"], close_fds=True, cwd=str(current.parent),
+                             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS)
+        else:
+            relance.relancer(["--apres-maj"])
 
 
 INSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{7D3F6A2B-9C1E-4F5A-8B2D-3E6C1A9F4B70}_is1"

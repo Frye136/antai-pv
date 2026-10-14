@@ -2,12 +2,20 @@
 import sys
 import traceback
 
-from PySide6.QtCore import QLocale
-from PySide6.QtWidgets import QApplication, QMessageBox
+from app import relance
 
-from app import config, db, instance, updater
-from app.ui.common import STYLE
-from app.ui.main_window import MainWindow
+# Lancé par une ancienne version après une mise à jour : se relancer proprement AVANT de charger les bibliothèques
+# (le dossier temporaire hérité est en train d'être vidé par l'ancienne version). Voir app/relance.py.
+if relance.doit_se_relancer():
+    relance.relancer([a for a in sys.argv[1:]])
+    sys.exit(0)
+
+from PySide6.QtCore import QLocale  # noqa: E402
+from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
+
+from app import config, db, instance, updater  # noqa: E402
+from app.ui.common import STYLE  # noqa: E402
+from app.ui.main_window import MainWindow  # noqa: E402
 
 
 def excepthook(exc_type, exc, tb):
@@ -50,7 +58,7 @@ def main():
         # mise à jour silencieuse (dépannage à distance, script) : installe la dernière release si elle est plus récente
         info = updater.check()
         if info:
-            updater.install(updater.download(info), relaunch=False)
+            updater.install(updater.download(info), relaunch="--relancer" in sys.argv)
         return
     if "--diagnostic" in sys.argv:
         app = QApplication(sys.argv)
