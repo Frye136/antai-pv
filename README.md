@@ -4,10 +4,12 @@
 [![Dernière version](https://img.shields.io/github/v/release/Frye136/antai-pv)](https://github.com/Frye136/antai-pv/releases/latest)
 [![Licence MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 
-Logiciel Windows libre et autonome (un seul `AntaiPV.exe`, aucune installation) pour les loueurs et gestionnaires de
-flotte qui reçoivent des avis de contravention sur leurs véhicules : lecture des scans, identification du locataire,
-**désignation en masse sur l'espace gestionnaire de flotte de l'ANTAI** (fichier CSV), ou **paiement puis
-refacturation** au client, notification par e-mail, archivage et suivi.
+Logiciel Windows libre pour les loueurs et gestionnaires de flotte qui reçoivent des avis de contravention sur leurs
+véhicules : lecture des scans, identification du locataire, **désignation en masse sur l'espace gestionnaire de flotte
+de l'ANTAI** (fichier CSV), ou **paiement puis refacturation** au client, notification par e-mail, archivage et suivi.
+
+Installation en un clic sans droits administrateur (ou exécutable autonome, sans installation), mises à jour
+automatiques, données conservées localement.
 
 > Projet indépendant, sans lien avec l'ANTAI ni avec l'administration. Vérifiez toujours les désignations avant dépôt.
 
@@ -42,6 +44,8 @@ au démarrage il signale une nouvelle version, la télécharge, vérifie son emp
 
 ## Démarrage
 
+Au premier lancement, le logiciel crée une base **vide** dans `Documents\AntaiPV\` (aucun client, véhicule ni avis).
+
 1. **Paramètres > Général** : raison sociale telle qu'imprimée sur vos avis, SIRET, frais de dossier, dossier de dépôt.
 2. **Paramètres > E-mail** : SMTP (Office 365, OVH…) ou Outlook, puis « Tester la connexion ».
 3. **Clients / Véhicules / Contrats** : « Modèle d'import » → remplir ou exporter depuis votre logiciel de location →
@@ -67,6 +71,9 @@ Date de naissance;Email;N° Permis de conduire;Permis délivré le;N° Voie;Nom 
 Tout reste **sur le poste** (ou le dossier choisi) : `Documents\AntaiPV\` — base SQLite `antai_pv.db`,
 `archive\AAAA\MM\<n°avis>_<plaque>.pdf`, `exports\` (lots CSV), `sauvegardes\` (30 jours), `depot_traites\`.
 La base est prévue pour un poste à la fois.
+
+Le programme (installé dans `%LOCALAPPDATA%\Programs\AntaiPV\`) est séparé des données : une mise à jour ou une
+désinstallation ne touche jamais `Documents\AntaiPV\`.
 
 - Aucune télémétrie. Seules connexions : votre serveur e-mail, et l'API publique de GitHub pour la recherche de mise à
   jour (aucune donnée envoyée ; désactivable dans *Paramètres > Mises à jour*).
