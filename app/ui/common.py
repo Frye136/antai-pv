@@ -272,7 +272,8 @@ class RecordDialog(QDialog):
         super().__init__(parent)
         self.table, self.record = table, record or {}
         self.setWindowTitle(("Modifier" if record else "Nouveau") + {"clients": " client", "vehicules": " véhicule",
-                                                                     "contrats": " contrat"}[table])
+                                                                     "contrats": " contrat",
+                                                                     "conducteurs": " chauffeur"}[table])
         self.setMinimumWidth(520)
         self.widgets = {}
         form = QFormLayout()
@@ -290,7 +291,7 @@ class RecordDialog(QDialog):
                 w.addItem("Personne morale (entreprise)", "PM")
                 w.addItem("Particulier", "PP")
                 w.setCurrentIndex(1 if val == "PP" else 0)
-            elif kind in ("vehicule", "client"):
+            elif kind in ("vehicule", "client", "conducteur"):
                 w = QComboBox()
                 w.setEditable(True)
                 w.setInsertPolicy(QComboBox.NoInsert)
@@ -298,6 +299,9 @@ class RecordDialog(QDialog):
                     items = [(plates.display(r["immatriculation"]) + (f"  ({r['marque'] or ''} {r['modele'] or ''})"
                               if r["marque"] else ""), r["id"])
                              for r in db.q("SELECT * FROM vehicules ORDER BY immatriculation")]
+                elif kind == "conducteur":
+                    items = [(f"{r['nom'] or ''} {r['prenom'] or ''}  ({r['matricule'] or '—'})", r["id"])
+                             for r in db.q("SELECT * FROM conducteurs WHERE actif=1 OR id=? ORDER BY nom, prenom", (val,))]
                 else:
                     items = [(f"{r['code_client'] or ''} – {r['raison_sociale'] or ((r['nom'] or '') + ' ' + (r['prenom'] or ''))}",
                               r["id"]) for r in db.q("SELECT * FROM clients ORDER BY raison_sociale, nom")]
@@ -370,6 +374,13 @@ class RecordDialog(QDialog):
                     raise ValueError("Le nom est obligatoire pour un particulier.")
                 if not vals["code_client"]:
                     vals["code_client"] = None
+            if self.table == "conducteurs":
+                if not vals["nom"]:
+                    raise ValueError("Le nom du chauffeur est obligatoire.")
+                if not vals["matricule"]:  # matricule généré : CH001, CH002…
+                    n = max([int(r["matricule"][2:]) for r in db.q("SELECT matricule FROM conducteurs "
+                             "WHERE matricule LIKE 'CH%'") if r["matricule"][2:].isdigit()] or [0])
+                    vals["matricule"] = f"CH{n + 1:03d}"
             if self.record.get("id"):
                 db.update(self.table, self.record["id"], vals)
                 self.saved_id = self.record["id"]

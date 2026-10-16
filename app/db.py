@@ -23,10 +23,22 @@ CREATE TABLE IF NOT EXISTS clients (
     traitement_pv TEXT,                       -- PAIEMENT = ce client préfère qu'on paie et refacture
     notes TEXT, actif INTEGER DEFAULT 1
 );
+CREATE TABLE IF NOT EXISTS conducteurs (       -- chauffeurs salariés (véhicules de la société)
+    id INTEGER PRIMARY KEY,
+    matricule TEXT UNIQUE,
+    civilite TEXT, nom TEXT, prenom TEXT,
+    date_naissance TEXT, lieu_naissance TEXT,
+    num_permis TEXT, date_permis TEXT,
+    adresse TEXT, complement TEXT, code_postal TEXT, ville TEXT, pays TEXT DEFAULT 'FRANCE',
+    email TEXT, telephone TEXT,
+    notes TEXT, actif INTEGER DEFAULT 1
+);
 CREATE TABLE IF NOT EXISTS vehicules (
     id INTEGER PRIMARY KEY,
     immatriculation TEXT UNIQUE NOT NULL,     -- normalisée : AB123CD
     marque TEXT, modele TEXT, categorie TEXT, vin TEXT,
+    propre INTEGER DEFAULT 0,                 -- 1 = véhicule de la société (non loué)
+    conducteur_id INTEGER,                    -- chauffeur habituel (proposé, à confirmer)
     notes TEXT, actif INTEGER DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS contrats (
@@ -62,6 +74,8 @@ CREATE TABLE IF NOT EXISTS pv (
     traitement_manuel TEXT,                   -- filière imposée à la main (sinon automatique)
     date_paiement TEXT, montant_paye REAL, mode_paiement TEXT, ref_paiement TEXT,
     facture_numero TEXT, date_facture TEXT, date_reglement TEXT,
+    conducteur_id INTEGER,                    -- chauffeur salarié à désigner (à la place du locataire)
+    conducteur_source TEXT,                   -- MANUEL (confirmé) ou HABITUEL (proposé)
     notes TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime')),
     updated_at TEXT
@@ -181,8 +195,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     added = {
         "pv": ["titulaire TEXT", "traitement TEXT", "traitement_manuel TEXT", "date_paiement TEXT",
                "montant_paye REAL", "mode_paiement TEXT", "ref_paiement TEXT", "facture_numero TEXT",
-               "date_facture TEXT", "date_reglement TEXT"],
+               "date_facture TEXT", "date_reglement TEXT", "conducteur_id INTEGER", "conducteur_source TEXT"],
         "clients": ["traitement_pv TEXT"],
+        "vehicules": ["propre INTEGER DEFAULT 0", "conducteur_id INTEGER"],
     }
     for table, cols in added.items():
         have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}

@@ -133,8 +133,12 @@ REF_COLUMNS = {
                 ("siret", "SIRET", None), ("ville", "Ville", None), ("email", "E-mail", None),
                 ("telephone", "Téléphone", None), ("nb_pv", "Avis", None), ("complet", "Fiche ANTAI", None)],
     "vehicules": [("immatriculation", "Immatriculation", f_plate), ("marque", "Marque", None), ("modele", "Modèle", None),
-                  ("categorie", "Catégorie", None), ("contrat_en_cours", "Loué à (aujourd'hui)", None),
+                  ("categorie", "Catégorie", None), ("propre", "Société", lambda v, r: "Oui" if v else ""),
+                  ("chauffeur", "Chauffeur habituel", None), ("contrat_en_cours", "Loué à (aujourd'hui)", None),
                   ("nb_pv", "Avis", None), ("actif", "Actif", f_bool)],
+    "conducteurs": [("matricule", "Matricule", None), ("nom_affiche", "Nom", None), ("date_naissance", "Né(e) le", f_date),
+                    ("num_permis", "Permis", None), ("ville", "Ville", None), ("telephone", "Téléphone", None),
+                    ("nb_pv", "Avis", None), ("complet", "Fiche ANTAI", None), ("actif", "Actif", f_bool)],
     "contrats": [("numero", "N° contrat", None), ("immatriculation", "Véhicule", f_plate), ("client", "Client", None),
                  ("date_debut", "Début", f_dt), ("date_fin", "Fin", lambda v, r: f_dt(v) if v else "en cours"),
                  ("conducteur", "Conducteur", None), ("designer_conducteur", "Désigner conducteur", f_bool)],
@@ -143,7 +147,12 @@ REF_SQL = {
     "clients": """SELECT c.*, COALESCE(c.raison_sociale, TRIM(COALESCE(c.nom,'')||' '||COALESCE(c.prenom,''))) nom_affiche,
                          (SELECT COUNT(*) FROM pv WHERE pv.client_id=c.id) nb_pv FROM clients c
                   ORDER BY nom_affiche""",
+    "conducteurs": """SELECT d.*, TRIM(COALESCE(d.nom,'')||' '||COALESCE(d.prenom,'')) nom_affiche,
+                             (SELECT COUNT(*) FROM pv WHERE pv.conducteur_id=d.id) nb_pv
+                      FROM conducteurs d ORDER BY d.nom, d.prenom""",
     "vehicules": """SELECT v.*, (SELECT COUNT(*) FROM pv WHERE pv.vehicule_id=v.id) nb_pv,
+                       (SELECT TRIM(COALESCE(d.nom,'')||' '||COALESCE(d.prenom,'')) FROM conducteurs d
+                        WHERE d.id=v.conducteur_id) chauffeur,
                        (SELECT COALESCE(c.raison_sociale, c.nom) FROM contrats k JOIN clients c ON c.id=k.client_id
                         WHERE k.vehicule_id=v.id AND k.date_debut<=datetime('now','localtime')
                         AND (k.date_fin IS NULL OR k.date_fin>=datetime('now','localtime')) LIMIT 1) contrat_en_cours
@@ -153,7 +162,8 @@ REF_SQL = {
                    FROM contrats k JOIN vehicules v ON v.id=k.vehicule_id JOIN clients c ON c.id=k.client_id
                    ORDER BY k.date_debut DESC""",
 }
-TITLES = {"clients": "Clients", "vehicules": "Véhicules", "contrats": "Contrats de location"}
+TITLES = {"clients": "Clients", "vehicules": "Véhicules", "contrats": "Contrats de location",
+          "conducteurs": "Chauffeurs de la société"}
 
 
 class ReferentielPage(QWidget):
@@ -161,7 +171,7 @@ class ReferentielPage(QWidget):
         super().__init__()
         self.main, self.table = main, table
         self.model = RowsModel(REF_COLUMNS[table])
-        if table == "clients":
+        if table in ("clients", "conducteurs"):
             self.model.color_fn = lambda r, k: (("#9B1C1C", "#FDE2E2") if k == "complet" and r["complet"] != "OK" else None)
         self.view, self.proxy = make_table(self.model, self)
         self.view.doubleClicked.connect(self.edit)
@@ -173,9 +183,10 @@ class ReferentielPage(QWidget):
         self.count.setObjectName("hint")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(20, 16, 20, 16)
-        lay.addLayout(page_header(TITLES[table],
-                                  button("🚐 Nouvelle location", self.new_location, primary=True),
-                                  button("＋ Nouveau", self.new), button("Modifier", self.edit_selected),
+        actions = [] if table == "conducteurs" else [button("🚐 Nouvelle location", self.new_location, primary=True)]
+        lay.addLayout(page_header(TITLES[table], *actions,
+                                  button("＋ Nouveau", self.new, primary=table == "conducteurs"),
+                                  button("Modifier", self.edit_selected),
                                   button("Supprimer", self.delete), button("📥 Importer Excel / CSV…", self.import_file),
                                   button("Modèle d'import", self.model_file), button("Exporter…", self.export)))
         bar = QHBoxLayout()
@@ -186,7 +197,10 @@ class ReferentielPage(QWidget):
         hints = {
             "clients": "Personne morale : raison sociale + adresse suffisent à la désignation. "
                        "Particulier : nom, prénom, date de naissance, adresse (et n° de permis recommandé).",
-            "vehicules": "Les immatriculations sont normalisées (AB-123-CD ↔ AB123CD).",
+            "vehicules": "Les immatriculations sont normalisées (AB-123-CD ↔ AB123CD). « Société » : véhicule de votre "
+                         "parc conduit par vos salariés — l'avis désigne le chauffeur (le chauffeur habituel est proposé).",
+            "conducteurs": "Salariés qui conduisent les véhicules de la société : désignés directement à l'ANTAI "
+                           "(civilité, nom, prénom, date de naissance, adresse et n° de permis).",
             "contrats": "Le locataire désigné est celui du contrat en cours à la date et l'heure de l'infraction. "
                         "Une date de fin sans heure couvre toute la journée.",
         }
@@ -196,14 +210,18 @@ class ReferentielPage(QWidget):
         self.view.setColumnWidth(0, 120)
         if table in ("clients", "contrats"):
             self.view.setColumnWidth(2, 260)
+        if table == "conducteurs":
+            self.view.setColumnWidth(1, 220)
 
     def refresh(self):
         rows = [dict(r) for r in db.q(REF_SQL[self.table])]
-        if self.table == "clients":
+        if self.table in ("clients", "conducteurs"):
             from .. import antai_export
             for r in rows:
-                miss = antai_export.missing_fields(r, {"numero_avis": "0000000000", "immatriculation": "X",
-                                                                 "date_avis": "X", "titulaire": "X"})
+                d = dict(r, type="PP") if self.table == "conducteurs" else r
+                miss = antai_export.missing_fields(d, {"numero_avis": "0000000000", "immatriculation": "X",
+                                                       "date_avis": "X", "titulaire": "X"})
+                miss += antai_export.warnings(d) and ["n° de permis"]
                 r["complet"] = "OK" if not miss else "Manque : " + ", ".join(miss)
         self.model.set_rows(rows)
         self.count.setText(f"{len(rows)} enregistrement(s)")
@@ -249,13 +267,18 @@ class ReferentielPage(QWidget):
             return
         errors = 0
         for r in rows:
+            if self.table == "conducteurs" and db.q1(
+                    "SELECT (SELECT COUNT(*) FROM pv WHERE conducteur_id=?) + "
+                    "(SELECT COUNT(*) FROM vehicules WHERE conducteur_id=?) n", (r["id"], r["id"]))["n"]:
+                errors += 1  # chauffeur désigné sur des avis ou chauffeur habituel : le rendre inactif plutôt
+                continue
             try:
                 db.execute(f"DELETE FROM {self.table} WHERE id=?", (r["id"],))
             except Exception:
                 errors += 1
         if errors:
-            QMessageBox.warning(self, "Supprimer", f"{errors} enregistrement(s) utilisé(s) ailleurs (contrats / avis) "
-                                                   "n'ont pas été supprimés.")
+            QMessageBox.warning(self, "Supprimer", f"{errors} enregistrement(s) utilisé(s) ailleurs (contrats / avis / "
+                                                   "véhicules) n'ont pas été supprimés. Décochez « Actif » pour les masquer.")
         self.main.refresh_all()
 
     def import_file(self):
@@ -300,6 +323,8 @@ class ReferentielPage(QWidget):
                     v = (db.q1("SELECT immatriculation FROM vehicules WHERE id=?", (v,)) or {"immatriculation": ""})["immatriculation"]
                 elif kind == "client":
                     v = (db.q1("SELECT code_client FROM clients WHERE id=?", (v,)) or {"code_client": ""})["code_client"]
+                elif kind == "conducteur":
+                    v = (db.q1("SELECT matricule FROM conducteurs WHERE id=?", (v,)) or {"matricule": ""})["matricule"]
                 vals.append(v)
             ws.append(vals)
         wb.save(path)

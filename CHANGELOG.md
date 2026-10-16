@@ -3,6 +3,16 @@
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque section `## [x.y.z]` sert de notes à la
 release GitHub correspondante.
 
+## [1.8.0] - 2026-10-16
+
+- Véhicules de la société : désignation directe d'un chauffeur salarié, sans société cliente.
+  - Nouvelle page « Chauffeurs » (import Excel par matricule, contrôle de complétude ANTAI).
+  - Véhicule : case « véhicule de la société » et chauffeur habituel.
+  - Avis : choix du « Chauffeur désigné » dans la fiche. Le chauffeur habituel est seulement proposé
+    (« À vérifier ») et doit être confirmé ; un chauffeur choisi à la main passe « À dénoncer ».
+  - Utilisable aussi pour un véhicule de location en usage interne (non loué ce jour-là).
+  - FPS / stationnement sur un véhicule de la société : à payer, sans refacturation.
+
 ## [1.7.3] - 2026-10-14
 
 - Correctif du plantage après une mise à jour automatique (« cannot import name '_extra' ») : la nouvelle version,

@@ -291,7 +291,8 @@ def identify(pv_id: int, force: bool = False) -> str:
     upd: dict = {"date_limite": deadline(pv), "updated_at": now()}
     anomalies = [a for a in (pv["anomalie"] or "").split("; ")
                  if a and not a.startswith(("locataire", "véhicule", "plusieurs contrats", "plaque lue", "fiche",
-                                            "avis", "FPS", "données", "n° de permis", "immatriculation"))]
+                                            "avis", "FPS", "données", "n° de permis", "immatriculation",
+                                            "chauffeur"))]
 
     immat = plates.normalize(pv["immatriculation"])
     veh = db.q1("SELECT * FROM vehicules WHERE immatriculation=?", (immat,)) if immat else None
@@ -327,13 +328,34 @@ def identify(pv_id: int, force: bool = False) -> str:
         k = db.q1("SELECT client_id FROM contrats WHERE id=?", (upd["contrat_id"],))
         upd["client_id"] = k["client_id"] if k else None
 
+    # --- chauffeur salarié (véhicule de la société ou usage interne) : désigné à la place du locataire
+    societe = bool(veh and veh["propre"] and not upd["contrat_id"])
+    if pv["conducteur_source"] == "MANUEL" and pv["conducteur_id"]:
+        probleme = None  # chauffeur choisi et confirmé dans la fiche
+        anomalies = [a for a in anomalies if not a.startswith("véhicule non loué")]
+    elif societe:
+        upd["contrat_id"] = upd["client_id"] = None
+        probleme = "A_VERIFIER"
+        if veh["conducteur_id"]:
+            upd["conducteur_id"], upd["conducteur_source"] = veh["conducteur_id"], "HABITUEL"
+            anomalies.append("véhicule de la société : chauffeur habituel proposé — confirmez-le dans la fiche")
+        else:
+            upd["conducteur_id"] = upd["conducteur_source"] = None
+            anomalies.append("véhicule de la société : choisissez le chauffeur dans la fiche")
+    elif pv["conducteur_source"] == "HABITUEL":  # proposition devenue caduque (véhicule loué, plus « société »)
+        upd["conducteur_id"] = upd["conducteur_source"] = None
+    if probleme == "NON_IDENTIFIE" and veh and not societe:
+        anomalies = [a if not a.startswith("véhicule non loué") else
+                     "véhicule non loué à cette date (usage interne ?) — un chauffeur peut être désigné dans la fiche"
+                     for a in anomalies]
+
     # --- filière
     traitement = pv["traitement_manuel"] or traitement_auto(pv, upd["client_id"])
     upd["traitement"] = traitement
     if traitement == "PAIEMENT":
         # le paiement n'attend pas l'identification : le locataire ne sert qu'à refacturer
         statut = "A_PAYER"
-        if probleme:
+        if probleme and not societe and pv["conducteur_source"] != "MANUEL":
             anomalies.append("locataire à identifier pour la refacturation")
     else:
         statut = probleme or "A_DENONCER"
@@ -368,6 +390,15 @@ def set_contract(pv_id: int, contrat_id: int | None) -> str:
         return identify(pv_id)  # garde le contrat choisi (cas ambigu) et recalcule statut / filière
     db.update("pv", pv_id, {"frais_dossier": frais_dossier(pv["client_id"]), "updated_at": now()})
     return pv["statut"]
+
+
+def set_conducteur(pv_id: int, conducteur_id: int | None) -> str:
+    """Choix (confirmé) du chauffeur salarié à désigner ; None : revenir au locataire du contrat."""
+    db.update("pv", pv_id, {"conducteur_id": conducteur_id, "conducteur_source": "MANUEL" if conducteur_id else None})
+    d = db.q1("SELECT nom, prenom, matricule FROM conducteurs WHERE id=?", (conducteur_id,)) if conducteur_id else None
+    db.log("Chauffeur désigné", f"{d['nom']} {d['prenom'] or ''} ({d['matricule'] or '-'})" if d else "aucun", pv_id)
+    pv = db.q1("SELECT statut FROM pv WHERE id=?", (pv_id,))
+    return identify(pv_id) if pv["statut"] in db.STATUTS_AUTO else pv["statut"]
 
 
 def set_traitement(pv_id: int, traitement: str | None) -> str:

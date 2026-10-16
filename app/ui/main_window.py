@@ -33,6 +33,7 @@ class MainWindow(QMainWindow):
             ("📤  Lots ANTAI", LotsPage(self)),
             ("🏢  Clients", ReferentielPage(self, "clients")),
             ("🚐  Véhicules", ReferentielPage(self, "vehicules")),
+            ("👷  Chauffeurs", ReferentielPage(self, "conducteurs")),
             ("📝  Contrats", ReferentielPage(self, "contrats")),
             ("⚙  Paramètres", SettingsPage(self)),
         ]
