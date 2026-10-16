@@ -44,6 +44,27 @@ FIELDS = {
         ("modele", "Modèle", "text"),
         ("categorie", "Catégorie", "text"),
         ("vin", "N° de série (VIN)", "text"),
+        ("propre", "Véhicule de la société (non loué)", "bool"),
+        ("conducteur_id", "Chauffeur habituel (matricule)", "conducteur"),
+        ("notes", "Notes", "text"),
+        ("actif", "Actif", "bool"),
+    ],
+    "conducteurs": [
+        ("matricule", "Matricule", "text"),
+        ("civilite", "Civilité", "text"),
+        ("nom", "Nom", "text"),
+        ("prenom", "Prénom", "text"),
+        ("date_naissance", "Date de naissance", "date"),
+        ("lieu_naissance", "Lieu de naissance", "text"),
+        ("num_permis", "N° permis", "text"),
+        ("date_permis", "Permis délivré le", "date"),
+        ("adresse", "Adresse", "text"),
+        ("complement", "Complément", "text"),
+        ("code_postal", "Code postal", "text"),
+        ("ville", "Ville", "text"),
+        ("pays", "Pays", "text"),
+        ("email", "E-mail", "text"),
+        ("telephone", "Téléphone", "text"),
         ("notes", "Notes", "text"),
         ("actif", "Actif", "bool"),
     ],
@@ -65,7 +86,7 @@ FIELDS = {
         ("notes", "Notes", "text"),
     ],
 }
-KEYS = {"clients": "code_client", "vehicules": "immatriculation", "contrats": "numero"}
+KEYS = {"clients": "code_client", "vehicules": "immatriculation", "contrats": "numero", "conducteurs": "matricule"}
 
 # libellés alternatifs reconnus à l'import (export ERP / logiciel de location)
 ALIASES = {
@@ -84,6 +105,9 @@ ALIASES = {
     "numero": ["contrat", "n contrat", "numero contrat", "num contrat", "ref contrat"],
     "date_debut": ["debut", "date depart", "depart", "date debut location", "date de debut"],
     "date_fin": ["fin", "date retour", "retour", "date fin location", "date de fin"],
+    "matricule": ["code chauffeur", "code salarie", "n salarie", "numero salarie", "id chauffeur", "code conducteur"],
+    "propre": ["vehicule societe", "vehicule propre", "propre", "non loue", "parc interne"],
+    "conducteur_id": ["chauffeur", "chauffeur habituel", "matricule chauffeur", "conducteur habituel"],
 }
 
 
@@ -183,7 +207,7 @@ def coerce(table: str, col: str, kind: str, v):
     if col == "code_postal":
         s = str(v).split(".")[0]
         return s.zfill(5) if s.isdigit() and len(s) == 4 else s
-    if col in ("code_client", "numero", "siret", "num_permis") and isinstance(v, float) and v.is_integer():
+    if col in ("code_client", "numero", "siret", "num_permis", "matricule") and isinstance(v, float) and v.is_integer():
         return str(int(v))
     return str(v)
 
@@ -228,7 +252,13 @@ def import_file(table: str, path: str) -> dict:
                     if not vals.get("numero"):
                         vals["numero"] = f"{immat}-{vals['date_debut'][:10]}"
                 else:
-                    vals = {c: coerce(table, c, kinds[c], v) for c, v in vals.items()}
+                    if "conducteur_id" in vals:  # véhicule : chauffeur habituel désigné par son matricule
+                        m = coerce("conducteurs", "matricule", "text", vals.pop("conducteur_id"))
+                        ch = db.q1("SELECT id FROM conducteurs WHERE matricule=?", (m,)) if m else None
+                        if m and not ch:
+                            raise ValueError(f"chauffeur « {m} » inconnu (importez les chauffeurs d'abord)")
+                        vals["conducteur_id"] = ch["id"] if ch else None
+                    vals = {c: (v if c == "conducteur_id" else coerce(table, c, kinds[c], v)) for c, v in vals.items()}
                     if not vals.get(key):
                         raise ValueError(f"{key} vide")
                 existing = db.q1(f"SELECT id FROM {table} WHERE {key}=?", (vals[key],))
@@ -268,7 +298,9 @@ def write_model(table: str, path: str) -> None:
         "clients": ["C001", "PM", "TRANSPORTS DUPONT", "12345678900012", "", "", "", "", "", "", "",
                     "12 rue de la Gare", "", "55100", "VERDUN", "FRANCE", "compta@dupont.example.com", "", "",
                     "", "", "1"],
-        "vehicules": ["AB-123-CD", "RENAULT", "MASTER", "Utilitaire", "", "", "1"],
+        "vehicules": ["AB-123-CD", "RENAULT", "MASTER", "Utilitaire", "", "0", "", "", "1"],
+        "conducteurs": ["CH001", "M", "DURAND", "Marc", "12/03/1985", "VERDUN", "123456789012", "01/06/2005",
+                        "5 rue des Lilas", "", "55100", "VERDUN", "FRANCE", "", "", "", "1"],
         "contrats": ["LOC-2026-001", "AB-123-CD", "C001", "01/10/2026 08:00", "15/10/2026 18:00",
                      "", "", "", "", "", "", "", "", "0", ""],
     }

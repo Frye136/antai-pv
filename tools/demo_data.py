@@ -1,4 +1,5 @@
-"""Jeu de données de démonstration : 4 clients, 20 véhicules, contrats couvrant les avis réels des archives.
+"""Jeu de données de démonstration fictif : 4 clients, 2 chauffeurs salariés, 22 véhicules (dont 2 de la société),
+contrats de location passés et en cours.
 
     python tools/demo_data.py               -> crée demo/clients.xlsx, demo/vehicules.xlsx, demo/contrats.xlsx
     python tools/demo_data.py --importer    -> crée les fichiers et les importe dans le dossier de données configuré
@@ -30,6 +31,17 @@ CLIENTS = [
     ("P001", "PP", "", "", "M", "MARTIN", "Paul", "01/05/1980", "VERDUN", "800555100123", "15/06/1999",
      "3 rue Haute", "", "55110", "DUN-SUR-MEUSE", "FRANCE", "paul.martin@example.com"),
 ]
+
+# chauffeurs salariés : matricule, civ, nom, prénom, naissance, lieu, permis, délivré, adresse, cp, ville
+CONDUCTEURS = [
+    ("CH001", "M", "DUBOIS", "Marc", "12/03/1985", "VERDUN", "850312345678", "01/06/2005", "5 rue des Lilas",
+     "55100", "VERDUN"),
+    ("CH002", "MME", "LEFORT", "Sophie", "02/09/1990", "SEDAN", "900902123456", "15/04/2009", "8 place Carnot",
+     "08200", "SEDAN"),
+]
+# véhicules de la société (non loués) : plaque, marque, modèle, catégorie, chauffeur habituel
+VEHICULES_SOCIETE = [("GS-111-AA", "RENAULT", "Master", "Utilitaire", "CH001"),
+                     ("GT-222-BB", "PEUGEOT", "Partner", "Utilitaire", "")]
 
 VEHICULES = [
     ("GA-123-BC", "VOLVO", "FH 500", "Tracteur"), ("GB-214-KL", "LECITRAILER", "Semi-remorque", "Remorque"),
@@ -94,11 +106,16 @@ def _sheet(path: Path, table: str, rows: list[list]) -> None:
 
 def build(out: Path) -> dict[str, Path]:
     out.mkdir(exist_ok=True)
-    files = {t: out / f"{t}.xlsx" for t in ("clients", "vehicules", "contrats")}
+    files = {t: out / f"{t}.xlsx" for t in ("clients", "conducteurs", "vehicules", "contrats")}
     _sheet(files["clients"], "clients",
            [[*c[:2], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9], c[10], c[11], c[12], c[13], c[14], c[15],
              c[16], "", "", "", "", DEMO, "1"] for c in CLIENTS])
-    _sheet(files["vehicules"], "vehicules", [[p, m, mo, cat, "", DEMO, "1"] for p, m, mo, cat in VEHICULES])
+    _sheet(files["conducteurs"], "conducteurs",
+           [[mat, civ, nom, pre, nais, lieu, perm, deliv, adr, "", cp, ville, "FRANCE", "", "", DEMO, "1"]
+            for mat, civ, nom, pre, nais, lieu, perm, deliv, adr, cp, ville in CONDUCTEURS])
+    _sheet(files["vehicules"], "vehicules",
+           [[p, m, mo, cat, "", "0", "", DEMO, "1"] for p, m, mo, cat in VEHICULES]
+           + [[p, m, mo, cat, "", "1", ch, DEMO, "1"] for p, m, mo, cat, ch in VEHICULES_SOCIETE])
     _sheet(files["contrats"], "contrats",
            [[n, p, c, d, f, *drv, str(des), DEMO] for n, p, c, d, f, drv, des in CONTRATS])
     return files
@@ -110,7 +127,7 @@ if __name__ == "__main__":
     if "--importer" in sys.argv:
         from app import config, db, services
         print("Base :", config.db_path())
-        for table in ("clients", "vehicules", "contrats"):
+        for table in ("clients", "conducteurs", "vehicules", "contrats"):
             res = referentiel.import_file(table, str(files[table]))
             print(f"  {table:10} {res['created']} créés, {res['updated']} mis à jour, erreurs : {res['errors'] or 'aucune'}")
         n = services.reidentify_open()

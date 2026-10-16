@@ -192,7 +192,15 @@ def designant_raison_sociale(pv) -> str:
 
 
 def designee(pv) -> dict:
-    """Personne (morale ou physique) à désigner pour ce PV, à partir du contrat et de la fiche client."""
+    """Personne (morale ou physique) à désigner pour ce PV : le chauffeur salarié s'il est renseigné (véhicule de la
+    société), sinon le conducteur nommé du contrat ou le client locataire."""
+    cid = pv["conducteur_id"] if "conducteur_id" in pv.keys() else None
+    if cid:
+        d = db.q1("SELECT * FROM conducteurs WHERE id=?", (cid,))
+        if d:
+            out = {key: d[key] for key in d.keys()}
+            out.update(type="PP", raison_sociale="", siret="")
+            return out
     c = db.q1("SELECT * FROM clients WHERE id=?", (pv["client_id"],)) if pv["client_id"] else None
     k = db.q1("SELECT * FROM contrats WHERE id=?", (pv["contrat_id"],)) if pv["contrat_id"] else None
     if k and k["designer_conducteur"] and k["cond_nom"]:

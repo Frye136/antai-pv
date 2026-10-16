@@ -14,9 +14,14 @@ from .common import (STATUT_COLORS, DropZone, RowsModel, Worker, error_box, f_da
                      open_path, selected_rows)
 
 PV_SQL = """
-SELECT pv.*, COALESCE(c.raison_sociale, TRIM(COALESCE(c.nom,'')||' '||COALESCE(c.prenom,''))) AS client,
+SELECT pv.*,
+       CASE WHEN d.id IS NOT NULL
+            THEN '👷 ' || TRIM(COALESCE(d.nom,'')||' '||COALESCE(d.prenom,''))
+                 || CASE WHEN pv.conducteur_source='HABITUEL' THEN ' (proposé)' ELSE '' END
+            ELSE COALESCE(c.raison_sociale, TRIM(COALESCE(c.nom,'')||' '||COALESCE(c.prenom,''))) END AS client,
        c.email AS client_email, k.numero AS contrat
 FROM pv LEFT JOIN clients c ON c.id=pv.client_id LEFT JOIN contrats k ON k.id=pv.contrat_id
+        LEFT JOIN conducteurs d ON d.id=pv.conducteur_id
 """
 
 FILTERS = [
@@ -575,6 +580,25 @@ class PvDialog(QDialog):
 
         self.contrat = QComboBox()
         form.addRow("Contrat de location", self.contrat)
+
+        # chauffeur salarié : véhicule de la société (ou usage interne d'un véhicule de location)
+        self.chauffeur = QComboBox()
+        self.chauffeur.addItem("(aucun — locataire du contrat)", None)
+        for r in db.q("SELECT * FROM conducteurs WHERE actif=1 OR id=? ORDER BY nom, prenom", (p["conducteur_id"],)):
+            self.chauffeur.addItem(f"{r['nom'] or ''} {r['prenom'] or ''}  ({r['matricule'] or '—'})", r["id"])
+        self.chauffeur.setCurrentIndex(max(0, self.chauffeur.findData(p["conducteur_id"])))
+        self.confirm_chauffeur = QPushButton("✔ Confirmer ce chauffeur")
+        self.confirm_chauffeur.setToolTip("Chauffeur habituel du véhicule proposé automatiquement : confirmez qu'il "
+                                          "conduisait au moment de l'infraction")
+        self.confirm_chauffeur.setVisible(p["conducteur_source"] == "HABITUEL")
+        self.confirm_chauffeur.clicked.connect(self._confirm_driver)
+        self._driver_confirmed = False
+        row_ch = QHBoxLayout()
+        row_ch.addWidget(self.chauffeur, 1)
+        row_ch.addWidget(self.confirm_chauffeur)
+        form.addRow("Chauffeur désigné", row_ch)
+        self.chauffeur.currentIndexChanged.connect(self._show_designee)
+        self.chauffeur.currentIndexChanged.connect(lambda _: self.confirm_chauffeur.setVisible(False))
         self.designee = QLabel()
         self.designee.setWordWrap(True)
         self.designee.setTextFormat(Qt.RichText)
@@ -710,6 +734,7 @@ class PvDialog(QDialog):
         k = db.q1("SELECT * FROM contrats WHERE id=?", (self.contrat.currentData(),)) if self.contrat.currentData() else None
         fake = dict(self.pv)
         fake.update(contrat_id=k["id"] if k else None, client_id=k["client_id"] if k else None,
+                    conducteur_id=self.chauffeur.currentData(),
                     numero_avis=self.f["numero_avis"].text() or None,
                     immatriculation=self.f["immatriculation"].text() or None,
                     date_avis=self.f["date_avis"].text() or None)
@@ -727,7 +752,17 @@ class PvDialog(QDialog):
         txt = f"{who}<br>{addr}<br>✉ {d.get('email') or '<i>pas d’e-mail</i>'}"
         if missing:
             txt += f"<br><span style='color:#C53030'>Manquant pour la désignation : {', '.join(missing)}</span>"
+        if fake.get("conducteur_id"):
+            txt = "👷 <i>Chauffeur de la société</i><br>" + txt
+            if self.pv["conducteur_source"] == "HABITUEL" and fake["conducteur_id"] == self.pv["conducteur_id"] \
+                    and not self._driver_confirmed:
+                txt += "<br><span style='color:#8A5A00'>Chauffeur habituel proposé : confirmez-le s'il conduisait.</span>"
         self.designee.setText(txt)
+
+    def _confirm_driver(self):
+        self._driver_confirmed = True
+        self.confirm_chauffeur.setVisible(False)
+        self._show_designee()
 
     def _values(self) -> dict:
         def num(s):
@@ -779,9 +814,14 @@ class PvDialog(QDialog):
             QMessageBox.warning(self, "Enregistrement", "Ce numéro d'avis existe déjà." if "UNIQUE" in str(e) else str(e))
             return False
         statut = self.statut.currentData()
-        if self.contrat.currentData() != old["contrat_id"]:
+        ch = self.chauffeur.currentData()
+        driver_changed = ch != old["conducteur_id"] or (ch and old["conducteur_source"] == "HABITUEL"
+                                                        and self._driver_confirmed)
+        if self.contrat.currentData() != old["contrat_id"] and not ch:
             services.set_contract(self.pv_id, self.contrat.currentData())
             db.log("Modification", "contrat choisi manuellement", self.pv_id)
+        elif driver_changed:
+            services.set_conducteur(self.pv_id, ch)
         elif changed and statut in db.STATUTS_AUTO:
             db.update("pv", self.pv_id, {"statut": "A_VERIFIER"})
             services.identify(self.pv_id)

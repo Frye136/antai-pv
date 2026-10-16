@@ -39,6 +39,7 @@ au démarrage il signale une nouvelle version, la télécharge, vérifie son emp
 - **CSV ANTAI** conforme au modèle officiel (18 colonnes, 100 désignations par fichier, contrôles du guide ANTAI).
 - **E-mails** aux clients (SMTP ou Outlook), un par client, avis en pièce jointe, modèle propre à chaque filière.
 - **Référentiel** clients / véhicules / contrats : import Excel ou CSV, ou formulaire unique « Nouvelle location ».
+- **Véhicules de la société** : chauffeurs salariés désignés directement (chauffeur habituel proposé, à confirmer).
 - **Suivi** : tableau de bord et échéances, lots ANTAI, accusés d'enregistrement, export « à facturer », journal,
   sauvegarde quotidienne.
 

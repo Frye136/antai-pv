@@ -244,6 +244,67 @@ def test_renommage_archive():
     assert Path(db.q1("SELECT fichier FROM pv WHERE id=?", (i,))["fichier"]).name == "8000000001_CC333CC.pdf"
 
 
+def test_chauffeurs():
+    """Véhicules de la société : désignation directe d'un chauffeur salarié (sans société cliente)."""
+    from app import antai_export, referentiel
+    from openpyxl import Workbook
+    # import Excel : chauffeurs puis véhicules (chauffeur habituel par matricule)
+    wb = Workbook(); ws = wb.active
+    ws.append([l for _, l, _ in referentiel.FIELDS["conducteurs"]])
+    ws.append(["CH001", "M", "Dubois", "Marc", "12/03/1985", "Verdun", "850312345678", "01/06/2005",
+               "5 rue des Lilas", "", "55100", "Verdun", "FRANCE", "", "", "", "1"])
+    ws.append(["CH002", "MME", "Lefort", "Sophie", "02/09/1990", "Sedan", "", "", "8 place Carnot", "", "08200",
+               "Sedan", "FRANCE", "", "", "", "1"])
+    f1 = os.path.join(TMP, "chauffeurs.xlsx"); wb.save(f1)
+    assert referentiel.import_file("conducteurs", f1)["created"] == 2
+    wb = Workbook(); ws = wb.active
+    ws.append([l for _, l, _ in referentiel.FIELDS["vehicules"]])
+    ws.append(["GS-111-AA", "RENAULT", "Master", "Utilitaire", "", "1", "CH001", "", "1"])
+    ws.append(["GT-222-BB", "PEUGEOT", "Partner", "Utilitaire", "", "oui", "", "", "1"])
+    f2 = os.path.join(TMP, "vehicules_societe.xlsx"); wb.save(f2)
+    res = referentiel.import_file("vehicules", f2)
+    assert res["created"] == 2 and not res["errors"], res
+    v1 = db.q1("SELECT * FROM vehicules WHERE immatriculation='GS111AA'")
+    assert v1["propre"] == 1 and v1["conducteur_id"] == db.q1("SELECT id FROM conducteurs WHERE matricule='CH001'")["id"]
+    ch1, ch2 = (db.q1("SELECT id FROM conducteurs WHERE matricule=?", (m,))["id"] for m in ("CH001", "CH002"))
+
+    base = {"date_avis": "2026-10-07", "date_infraction": "2026-10-01", "heure_infraction": "08:30",
+            "nature": "EXCES DE VITESSE", "type": "AMENDE", "titulaire": "SARL LOCATION EXEMPLE"}
+    # véhicule de la société + chauffeur habituel : proposé, à confirmer
+    a = db.insert("pv", dict(base, numero_avis="9100000001", immatriculation="GS111AA"))
+    assert services.identify(a) == "A_VERIFIER"
+    r = db.q1("SELECT * FROM pv WHERE id=?", (a,))
+    assert r["conducteur_id"] == ch1 and r["conducteur_source"] == "HABITUEL" and "proposé" in r["anomalie"]
+    assert services.set_conducteur(a, ch1) == "A_DENONCER"            # confirmation
+    r = db.q1("SELECT * FROM pv WHERE id=?", (a,))
+    assert r["client_id"] is None and r["contrat_id"] is None and not r["anomalie"], dict(r)
+    vals = antai_export.row_values(r, antai_export.template())
+    assert vals["designant_raison_sociale"] == "SARL LOCATION EXEMPLE" and vals["civilite"] == "M."
+    assert (vals["nom"], vals["prenom"], vals["date_naissance"], vals["num_permis"]) == \
+        ("DUBOIS", "Marc", "12/03/1985", "850312345678"), vals
+    assert vals["code_postal"] == "55100" and vals["nom_voie"] == "RUE DES LILAS"
+
+    # véhicule de la société sans chauffeur habituel : à choisir
+    b = db.insert("pv", dict(base, numero_avis="9100000002", immatriculation="GT222BB"))
+    assert services.identify(b) == "A_VERIFIER"
+    assert "choisissez le chauffeur" in db.q1("SELECT anomalie FROM pv WHERE id=?", (b,))["anomalie"]
+    services.set_conducteur(b, ch2)  # chauffeur sans n° de permis : désignable (avertissement ANTAI)
+    rb = db.q1("SELECT statut, anomalie FROM pv WHERE id=?", (b,))
+    assert rb["statut"] == "A_DENONCER" and "permis" in rb["anomalie"], dict(rb)
+
+    # véhicule de location non loué ce jour-là : un chauffeur peut être désigné à la main
+    c = db.insert("pv", dict(base, numero_avis="9100000003", immatriculation="GA123BC", date_infraction="2026-01-05"))
+    assert services.identify(c) == "NON_IDENTIFIE"
+    assert "chauffeur peut être désigné" in db.q1("SELECT anomalie FROM pv WHERE id=?", (c,))["anomalie"]
+    assert services.set_conducteur(c, ch1) == "A_DENONCER"
+    assert services.set_conducteur(c, None) == "NON_IDENTIFIE"        # retour au locataire
+
+    # FPS sur un véhicule de la société : à payer, sans locataire à refacturer
+    d = db.insert("pv", dict(base, numero_avis="9100000004", immatriculation="GT222BB", type="FPS"))
+    assert services.identify(d) == "A_PAYER"
+    assert "refacturation" not in (db.q1("SELECT anomalie FROM pv WHERE id=?", (d,))["anomalie"] or "")
+
+
 def test_updater():
     """Comparaison de versions et lecture d'une release GitHub (réseau simulé)."""
     import hashlib
@@ -276,5 +337,6 @@ if __name__ == "__main__":
     test_paiement()
     test_suppression()
     test_renommage_archive()
+    test_chauffeurs()
     test_updater()
     print("OK — tous les tests passent")

@@ -6,7 +6,7 @@ from pathlib import Path
 
 APP_NAME = "AntaiPV"
 APP_TITLE = "ANTAI PV — Gestion des dénonciations"
-VERSION = "1.7.3"
+VERSION = "1.8.0"
 GITHUB_REPO = "Frye136/antai-pv"   # dépôt public : code source, releases et mises à jour automatiques
 
 _LOCAL_CFG_DIR = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
