@@ -17,11 +17,14 @@ DATE_TXT = r"(\d{1,2})(?:er)?\s+(" + "|".join(MOIS) + r")\s+(\d{4})"
 HEURE = r"(\d{1,2})\s?[hH:]\s?(\d{2})"
 
 AVIS_PATTERNS = [
+    # libellé « Numéro de l'avis de contravention » puis le n° jusqu'à quelques lignes plus bas (bruit d'OCR entre les deux)
+    r"numero\s+de\s+l.avis\s+de\s+contravention\s*(?:\S{1,3}\s+)?((?:\d[\s.]?){10,14})",
     r"n(?:um(?:e|é)ro)?\s*[°o]?\s*(?:de\s+l['’ ]?\s*)?avis(?:\s+de\s+contravention)?\s*[:.]?\s*((?:\d[\s.]?){10,14})",
     r"avis\s+de\s+contravention\s*n\s*[°o]?\s*[:.]?\s*((?:\d[\s.]?){10,14})",
     r"avis\s*n\s*[°o]?\s*[:.]?\s*((?:\d[\s.]?){10,14})",
     r"n\s*[°o]\s*(?:du\s+)?(?:pv|proc[eè]s[\s-]verbal)\s*[:.]?\s*((?:\d[\s.]?){10,14})",
     r"reference\s+de\s+l.avis\s*[:.]?\s*((?:\d[\s.]?){10,14})",  # amende forfaitaire majorée
+    r"numero\s+de\s+l.avis\s+de\s+contravention[\s\S]{0,200}?(?<!\d)(\d{10})(?!\d)",
 ]
 DATE_AVIS_LABELS = r"(?:date\s+d['’ ]?(?:envoi|[ée]mission|[ée]dition)|envoy[ée]\s+le|[ée]dit[ée]\s+le|" \
                    r"date\s+de\s+l['’ ]?avis|fait\s+le|[ée]mis\s+le)"
@@ -89,6 +92,15 @@ def parse(text: str, fleet: list[str] | None = None) -> dict:
         res["type"] = "MAJOREE"
     else:
         res["type"] = "AMENDE"
+    one = re.sub(r"\s+", " ", flat)
+    m = re.search(r"conduit par ((?:M|MME|MLLE|MADAME|MONSIEUR)\.? [^.,;:]{2,50}?) a fait l", one, re.I)
+    if m:  # « Le véhicule immatriculé … conduit par M. X a fait l'objet d'un contrôle » : conducteur interpellé
+        res["conducteur_interpelle"] = m.group(1).strip()
+        if res["type"] == "AMENDE":
+            res["type"] = "INTERPELLATION"
+    m = re.search(r"(\d+)\s*(?:e|eme|ème)?\s+tranche\s*/\s*(\d+)", one, re.I)
+    if m:  # surcharge sanctionnée par tranche : un avis par tranche
+        res["tranche"] = f"{m.group(1)}/{m.group(2)}"
 
     # --- Numéro d'avis
     for pat in AVIS_PATTERNS:
@@ -167,6 +179,9 @@ def parse(text: str, fleet: list[str] | None = None) -> dict:
                   r"\s*[:\-]\s*([^\n]{3,120})", flat, re.I)
     if m:
         res["lieu"] = m.group(1).strip(" .;")
+        suite = flat[m.end():].lstrip("\n").split("\n", 1)[0].strip(" •·.-*")
+        if re.fullmatch(r"[A-ZÀ-Ü][A-ZÀ-Ü' \-]{1,40} - \d{2,5}", suite):
+            res["lieu"] = f"{suite}, {res['lieu']}"
     else:
         res["lieu"] = _lieu_apres_date(flat)
 
@@ -176,10 +191,12 @@ def parse(text: str, fleet: list[str] | None = None) -> dict:
     if m:
         res["nature"] = m.group(1).strip(" .;")
     else:
+        res["nature"] = _nature_avant_prevue(flat)
+    if not res.get("nature"):
         best = ""
         for line in flat.splitlines():
             up = _ascii(line).upper()
-            if any(kw in up for kw in NATURES) and len(line) > len(best):
+            if any(re.search(rf"\b{re.escape(kw)}\b", up) for kw in NATURES) and len(line) > len(best):
                 best = line.strip(" -.;")
         if best:
             res["nature"] = best[:160]
@@ -199,9 +216,32 @@ def parse(text: str, fleet: list[str] | None = None) -> dict:
     if found:
         lab = re.search(r"montant\s+de\s+l.amende|montant|a\s+payer", low)
         after = [a for a in found if lab and a[0] >= lab.start()]
-        res["montant"] = (after or found)[0][1]
+        serie = after or found
+        res["montant"] = serie[0][1]
+        # « 135 € / 90 € / 375 € » : forfaitaire, minorée (paiement rapide), majorée
+        if len(serie) >= 2 and serie[1][1] < serie[0][1] and re.search(r"ramen[ée]|minor", low):
+            res["montant_minore"] = serie[1][1]
 
     return res
+
+
+def _nature_avant_prevue(text: str) -> str | None:
+    """Libellé de l'infraction : lignes en majuscules qui précèdent « - Prévue par Art. … »."""
+    lines = [l.strip(" -—–.;") for l in text.splitlines()]
+    for i, line in enumerate(lines):
+        if re.search(r"pr[ée]vue\s+par", line, re.I):
+            bloc = []
+            for prev in reversed(lines[max(0, i - 6):i]):
+                if (len(prev) >= 8 and prev.upper() == prev and re.search(r"[A-Z]{3}", prev)
+                        and not re.search(r"\d{5}|REPRESENTANT|LA POSTE|^ZA\d|DESCRIPTION", prev)):
+                    bloc.insert(0, prev)
+                else:
+                    break
+            if len(bloc) > 1 and bloc[1].startswith(bloc[0]):  # intitulé court répété (« EXCES DE VITESSE »)
+                bloc = bloc[1:]
+            if bloc:
+                return " ".join(bloc)[:250]
+    return None
 
 
 def _lieu_apres_date(text: str) -> str | None:

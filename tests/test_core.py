@@ -244,6 +244,65 @@ def test_renommage_archive():
     assert Path(db.q1("SELECT fichier FROM pv WHERE id=?", (i,))["fichier"]).name == "8000000001_CC333CC.pdf"
 
 
+INTERPELLATION = """Numéro de l'avis
+de contravention
+7
+Liberté • Égalité • Fraternité
+AVIS DE CONTRAVENTION
+5123456789
+Date de l'avis de
+contravention
+13/10/2026
+Le véhicule immatriculé GA-123-BC conduit par M.
+DUPONT Jean a fait l'objet d'un contrôle ayant
+permis de constater l'infraction ci-dessous.
+Cet avis correspond à la 2e tranche / 3 résultant de
+l'infraction constatée.
+DESCRIPTION DE L'INFRACTION—
+M(ME) LE(LA) REPRESENTANT(E) LEGAL(E)
+SARL LOCATION EXEMPLE
+1 RUE DE LA PAIX
+55100 VERDUN
+CIRCULATION D'UN VEHICULE DONT LE POIDS EXCEDE
+LES PRESCRIPTIONS DE L'ARRETE PREFECTORAL
+- Prévue par Art. R. 433-3 du C. de la route.
+Date I heure de constatation : le 07/10/2026 à 12h45
+Lieu : RUE DE LA GARE
+• VILLENEUVE - 80
+Les données recueillies dans ce cadre et précisées dans rarrété sont conservées
+Montant de l'amende
+135 €
+90 €
+375 €
+• Immatriculation : GA-123-BC
+"""
+
+
+def test_interpellation():
+    """Avis à conducteur interpellé (surcharge par tranche) : non désignable -> payer et refacturer."""
+    r = parser.parse(INTERPELLATION, ["GA123BC"])
+    assert r["type"] == "INTERPELLATION" and r["conducteur_interpelle"] == "M. DUPONT Jean", r
+    assert r["tranche"] == "2/3" and r["numero_avis"] == "5123456789", r
+    assert "deviné" not in " ".join(r["anomalies"]), r
+    assert r["nature"].startswith("CIRCULATION D'UN VEHICULE DONT LE POIDS"), r
+    assert r["lieu"] == "VILLENEUVE - 80, RUE DE LA GARE", r
+    assert (str(r["date_infraction"]), r["heure_infraction"], r["montant"]) == ("2026-10-07", "12:45", 135.0)
+    assert r.get("montant_minore") is None  # « ramené à » absent du texte d'essai : pas de montant minoré deviné
+    r2 = parser.parse(INTERPELLATION.replace("Montant de l'amende", "Montant de l'amende\nvotre amende est ramené à :"))
+    assert r2["montant_minore"] == 90.0, r2
+    veh = db.q1("SELECT id FROM vehicules WHERE immatriculation='GA123BC'")["id"]
+    k = db.insert("contrats", {"numero": "K-INT", "vehicule_id": veh,
+                               "client_id": db.q1("SELECT id FROM clients WHERE code_client='C1'")["id"],
+                               "date_debut": "2026-10-01 08:00", "date_fin": "2026-10-10 18:00"})
+    i = db.insert("pv", {"numero_avis": "5123456789", "type": "INTERPELLATION", "immatriculation": "GA123BC",
+                         "date_avis": "2026-10-13", "date_infraction": "2026-10-07", "heure_infraction": "12:45",
+                         "montant": 135.0})
+    assert services.identify(i) == "A_PAYER"
+    row = db.q1("SELECT traitement, contrat_id FROM pv WHERE id=?", (i,))
+    assert row["traitement"] == "PAIEMENT" and row["contrat_id"] == k  # client du contrat : refacturation
+    assert services.set_traitement(i, "DESIGNATION") == "A_VERIFIER"     # désignation forcée : signalée
+
+
 def test_chauffeurs():
     """Véhicules de la société : désignation directe d'un chauffeur salarié (sans société cliente)."""
     from app import antai_export, referentiel
@@ -337,6 +396,7 @@ if __name__ == "__main__":
     test_paiement()
     test_suppression()
     test_renommage_archive()
+    test_interpellation()
     test_chauffeurs()
     test_updater()
     print("OK — tous les tests passent")

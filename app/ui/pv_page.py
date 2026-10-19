@@ -555,7 +555,8 @@ class PvDialog(QDialog):
         line("numero_avis", "N° de l'avis", p["numero_avis"], "10 chiffres")
         self.type = QComboBox()
         for code, lab in [("AMENDE", "Avis de contravention"), ("MAJOREE", "Amende forfaitaire majorée"),
-                          ("FPS", "Forfait post-stationnement (FPS)"), ("AUTRE", "Autre")]:
+                          ("FPS", "Forfait post-stationnement (FPS)"),
+                          ("INTERPELLATION", "Conducteur interpellé (non désignable)"), ("AUTRE", "Autre")]:
             self.type.addItem(lab, code)
         self.type.setCurrentIndex(max(0, self.type.findData(p["type"])))
         form.addRow("Type", self.type)

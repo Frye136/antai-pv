@@ -53,10 +53,16 @@ def import_file(path: str | Path, progress=None, move_to: Path | None = None) ->
     # Découpage : chaque recto portant un n° d'avis commence un nouvel avis, les pages suivantes y sont rattachées.
     # Un accusé d'enregistrement ANTAI forme un seul document (ses pages annexes ne sont pas des avis).
     groups: list[list[int]] = []
+    numeros: list[str | None] = []  # n° d'avis de chaque groupe
     for i, t in enumerate(texts):
         accuse_en_cours = groups and parser.is_accuse_designation(texts[groups[-1][0]])
-        if not groups or (parser.looks_like_new_avis(t) and not accuse_en_cours) or parser.is_accuse_designation(t):
+        nouveau = parser.looks_like_new_avis(t) and not accuse_en_cours
+        num = parser.parse(t).get("numero_avis") if nouveau else None
+        if nouveau and groups and num and num == numeros[-1]:
+            nouveau = False  # verso / formulaire de requête portant le même n° : même avis
+        if not groups or nouveau or parser.is_accuse_designation(t):
             groups.append([i])
+            numeros.append(num)
         else:
             groups[-1].append(i)
 
@@ -93,7 +99,15 @@ def import_file(path: str | Path, progress=None, move_to: Path | None = None) ->
             "date_avis": _iso(data.get("date_avis")),
             "fichier": str(dest), "fichier_hash": digest, "ocr_texte": text,
             "anomalie": "; ".join(data.get("anomalies", [])),
-            "notes": f"Source : {path.name}",
+            "notes": "\n".join([f"Source : {path.name}"]
+                                + ([f"Conducteur interpellé : {data['conducteur_interpelle']}"]
+                                   if data.get("conducteur_interpelle") else [])
+                                + ([f"Tranche {data['tranche']} (un avis par tranche de surcharge)"]
+                                   if data.get("tranche") else [])
+                                + ([f"Montant minoré : {data['montant_minore']:g} € si payé sous 15 jours (30 jours "
+                                    f"en ligne) à compter du {parser.fmt_date(data.get('date_avis')) or 'jour de l’avis'}"
+                                    .replace(".", ",")]
+                                   if data.get("montant_minore") else [])),
         })
         db.log("Import", f"{path.name} p.{pages[0] + 1}-{pages[-1] + 1}", pv_id)
         statut = identify(pv_id)
@@ -270,7 +284,7 @@ def deadline(pv) -> str | None:
 def traitement_auto(pv, client_id: int | None) -> str:
     """Filière par défaut : payer et refacturer pour FPS / majorées / autres / stationnement / clients qui le
     préfèrent ; désignation ANTAI sinon."""
-    if pv["type"] in ("FPS", "MAJOREE", "AUTRE"):
+    if pv["type"] in ("FPS", "MAJOREE", "AUTRE", "INTERPELLATION"):
         return "PAIEMENT"
     if db.setting("stationnement_payer") == "1" and "STATIONNEMENT" in parser._ascii(pv["nature"] or "").upper():
         return "PAIEMENT"
@@ -361,6 +375,10 @@ def identify(pv_id: int, force: bool = False) -> str:
         statut = probleme or "A_DENONCER"
         if pv["type"] == "MAJOREE":
             anomalies.append("avis majoré : la désignation n'est plus possible, passez en « payer et refacturer »")
+            statut = "A_VERIFIER"
+        if pv["type"] == "INTERPELLATION":
+            anomalies.append("avis à conducteur interpellé : il n'y a normalement rien à désigner, "
+                             "passez en « payer et refacturer »")
             statut = "A_VERIFIER"
         if statut == "A_DENONCER":
             merged = dict(pv)

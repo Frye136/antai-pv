@@ -3,6 +3,16 @@
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque section `## [x.y.z]` sert de notes à la
 release GitHub correspondante.
 
+## [1.9.0] - 2026-10-19
+
+- Avis à **conducteur interpellé** (« le véhicule … conduit par M. X a fait l'objet d'un contrôle », p. ex. surcharge
+  constatée au pesage) : nouveau type « Conducteur interpellé », non désignable, classé automatiquement en
+  « payer et refacturer ». Le nom du conducteur, la tranche (« 2e tranche / 3 ») et le montant minoré sont notés
+  sur l'avis.
+- Le verso / formulaire de requête portant le même n° est rattaché à l'avis (au lieu d'être rejeté comme doublon).
+- Lecture plus robuste : n° d'avis séparé de son libellé par du bruit d'OCR, nature lue avant « Prévue par … »
+  (évite les faux mots-clés), lieu sur deux lignes (« RUE … » puis « COMMUNE - 80 »).
+
 ## [1.8.0] - 2026-10-16
 
 - Véhicules de la société : désignation directe d'un chauffeur salarié, sans société cliente.
