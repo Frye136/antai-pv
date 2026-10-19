@@ -1,13 +1,17 @@
-PySide6>=6.7
-PyMuPDF>=1.24
-openpyxl>=3.1
-Pillow>=10
-pywin32>=306
-winrt-runtime>=2.0
-winrt-Windows.Foundation>=2.0
-winrt-Windows.Foundation.Collections>=2.0
-winrt-Windows.Globalization>=2.0
-winrt-Windows.Graphics.Imaging>=2.0
-winrt-Windows.Media.Ocr>=2.0
-winrt-Windows.Storage.Streams>=2.0
-pyinstaller>=6.0
+# Versions figées : la compilation (locale et GitHub Actions) doit utiliser exactement les versions testées.
+# PyMuPDF 2.0 / Pillow 13 ont cassé l'exécutable PyInstaller (octobre 2026) : toute montée de version se teste
+# d'abord en local (build.ps1 puis AntaiPV.exe --diagnostic).
+PySide6==6.12.0
+PyMuPDF==1.28.2
+openpyxl==3.1.5
+Pillow==12.3.0
+pywin32==312
+winrt-runtime==3.2.1
+winrt-Windows.Foundation==3.2.1
+winrt-Windows.Foundation.Collections==3.2.1
+winrt-Windows.Globalization==3.2.1
+winrt-Windows.Graphics.Imaging==3.2.1
+winrt-Windows.Media.Ocr==3.2.1
+winrt-Windows.Storage.Streams==3.2.1
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.8
