@@ -3,6 +3,15 @@
 Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque section `## [x.y.z]` sert de notes à la
 release GitHub correspondante.
 
+## [1.9.1] - 2026-10-19
+
+- Correctif CSV ANTAI : la colonne « SIRET » contient le SIRET de la société désignée (civilité SOCIETE) et reste
+  vide pour une personne. L'ANTAI refusait « la civilité M./MME avec un SIRET ». Les formats d'export enregistrés
+  sont corrigés automatiquement ; régénérez les lots non déposés.
+- Civilité en liste de choix (M. / MME) dans les fiches clients et chauffeurs ; valeurs importées normalisées
+  (« Monsieur », « MR »… -> M.).
+- Avertissement si le SIRET d'une société désignée manque ou n'a pas 14 chiffres.
+
 ## [1.9.0] - 2026-10-19
 
 - Avis à **conducteur interpellé** (« le véhicule … conduit par M. X a fait l'objet d'un contrôle », p. ex. surcharge

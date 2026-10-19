@@ -221,7 +221,7 @@ class ReferentielPage(QWidget):
                 d = dict(r, type="PP") if self.table == "conducteurs" else r
                 miss = antai_export.missing_fields(d, {"numero_avis": "0000000000", "immatriculation": "X",
                                                        "date_avis": "X", "titulaire": "X"})
-                miss += antai_export.warnings(d) and ["n° de permis"]
+                miss += [w.split(" (")[0].split(" non ")[0].split(" absent")[0] for w in antai_export.warnings(d)]
                 r["complet"] = "OK" if not miss else "Manque : " + ", ".join(miss)
         self.model.set_rows(rows)
         self.count.setText(f"{len(rows)} enregistrement(s)")

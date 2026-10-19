@@ -286,6 +286,12 @@ class RecordDialog(QDialog):
             elif kind == "traitement":
                 w = QCheckBox("oui — on paie les avis de ce client et on les lui refacture (pas de désignation)")
                 w.setChecked(val == "PAIEMENT")
+            elif kind == "civilite":  # choix imposés par l'ANTAI pour une personne
+                w = QComboBox()
+                for lab, code in (("—", None), ("M.", "M"), ("MME", "MME")):
+                    w.addItem(lab, code)
+                code = referentiel.coerce(table, col, "civilite", val) if val else None
+                w.setCurrentIndex(max(0, w.findData(code)))
             elif kind == "type_client":
                 w = QComboBox()
                 w.addItem("Personne morale (entreprise)", "PM")

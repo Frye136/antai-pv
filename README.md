@@ -62,8 +62,9 @@ Date de naissance;Email;N° Permis de conduire;Permis délivré le;N° Voie;Nom 
 — séparateur `;`, ANSI, dates `jj/mm/aaaa`.
 
 - « Raison sociale désignant » = le contrevenant **tel qu'imprimé sur l'avis** (lu sur chaque avis ; l'ANTAI le contrôle).
-- Entreprise désignée : civilité `SOCIETE`, raison sociale dans « Nom ou Raison sociale ».
-  Particulier : `M.` / `MME`, nom, prénom, date de naissance, permis.
+- Entreprise désignée : civilité `SOCIETE`, raison sociale dans « Nom ou Raison sociale », **son** SIRET dans « SIRET ».
+  Particulier ou chauffeur : `M.` / `MME`, nom, prénom, date de naissance, permis — **SIRET vide** (l'ANTAI refuse
+  « la civilité M./MME avec un SIRET »).
 - Pays selon l'annexe 3 du guide, caractères interdits (`&`, `#`, `+`…) remplacés, code postal sur 5 chiffres.
 - **Paramètres > Format export ANTAI** : tout est modifiable ; un nouveau modèle ANTAI s'importe en un clic.
 

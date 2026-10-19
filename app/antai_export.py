@@ -3,6 +3,8 @@
 Règles du « Guide utilisateur – Gestionnaires de parc non conventionnés » (ANTAI) et du modèle CSV officiel :
 - 18 colonnes, séparateur « ; », ANSI ou UTF-8, ligne d'en-tête obligatoire, 100 désignations max par fichier ;
 - « Raison sociale désignant » = raison sociale du contrevenant inscrite sur l'avis (le loueur), contrôlée par l'ANTAI ;
+- « SIRET » = SIRET de la société DÉSIGNÉE (civilité SOCIETE) ; vide pour une personne : l'ANTAI refuse
+  « la civilité M./MME avec un SIRET » ;
 - Civilité : « M. », « MME » ou « SOCIETE » (personne morale désignée : raison sociale dans « Nom ou Raison sociale ») ;
 - dates JJ/MM/AAAA ; code postal sur 5 chiffres pour la France ; pays selon la liste de l'annexe 3 ;
 - caractères autorisés limités (lettres, accents usuels, chiffres, ()-/.,%«»:_[]?!' et espace).
@@ -25,7 +27,7 @@ FIELDS = {
     "date_infraction": "Date de l'infraction",
     "heure_infraction": "Heure de l'infraction",
     "designant_raison_sociale": "Raison sociale désignant (titulaire sur l'avis = vous)",
-    "designant_siret": "SIRET du désignant (vous)",
+    "designant_siret": "SIRET du loueur (vous) — à ne pas mettre dans la colonne SIRET de l'ANTAI",
     "civilite": "Civilité (M. / MME / SOCIETE)",
     "nom": "Nom ou raison sociale du désigné",
     "prenom": "Prénom",
@@ -41,7 +43,7 @@ FIELDS = {
     "code_postal": "Code postal",
     "ville": "Ville",
     "pays": "Pays",
-    "siret": "SIRET du désigné (si société)",
+    "siret": "SIRET de la société désignée (vide pour une personne)",
 }
 
 DEFAULT_TEMPLATE = {
@@ -58,7 +60,7 @@ DEFAULT_TEMPLATE = {
         {"titre": "Immatriculation", "champ": "immatriculation"},
         {"titre": "Date avis", "champ": "date_avis"},
         {"titre": "Raison sociale désignant", "champ": "designant_raison_sociale"},
-        {"titre": "SIRET", "champ": "designant_siret"},
+        {"titre": "SIRET", "champ": "siret"},
         {"titre": "Civilité", "champ": "civilite"},
         {"titre": "Nom ou Raison sociale", "champ": "nom"},
         {"titre": "Prénom", "champ": "prenom"},
@@ -110,7 +112,7 @@ _ALIASES = [
     (r"date.*infraction", "date_infraction"),
     (r"heure", "heure_infraction"),
     (r"raison sociale d[ée]sign", "designant_raison_sociale"),
-    (r"siret|siren", "designant_siret"),
+    (r"siret|siren", "siret"),
     (r"civilit", "civilite"),
     (r"^nom(?! voie)|nom ou raison", "nom"),
     (r"pr[ée]nom", "prenom"),
@@ -132,6 +134,10 @@ def template() -> dict:
     t = db.setting_json("export_template", None)
     # un format enregistré avant le modèle officiel à 18 colonnes est ignoré
     if t and t.get("columns") and t.get("version", 1) >= 2:
+        # v1.9.1 : la colonne « SIRET » de l'ANTAI est celle de la société désignée (et non du loueur)
+        for col in t["columns"]:
+            if col.get("champ") == "designant_siret" and "siret" in col.get("titre", "").lower():
+                col["champ"] = "siret"
         return t
     return json.loads(json.dumps(DEFAULT_TEMPLATE))
 
@@ -254,9 +260,11 @@ def missing_fields(d: dict, pv) -> list[str]:
 
 
 def warnings(d: dict) -> list[str]:
-    """Points signalés en avertissement par l'ANTAI (n'empêchent pas le dépôt)."""
+    """Points signalés en avertissement (n'empêchent pas la génération du CSV)."""
     if d and d.get("type") != "PM" and not d.get("num_permis"):
         return ["n° de permis du conducteur non renseigné (avertissement ANTAI)"]
+    if d and d.get("type") == "PM" and len(re.sub(r"\D", "", d.get("siret") or "")) != 14:
+        return ["SIRET de la société désignée absent ou incomplet (14 chiffres)"]
     return []
 
 

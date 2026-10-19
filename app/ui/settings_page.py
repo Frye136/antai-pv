@@ -54,7 +54,7 @@ class SettingsPage(QWidget):
         dep.addWidget(self.depot)
         dep.addWidget(button("Parcourir…", lambda: _browse_dir(self.depot, self)))
         f.addRow("Votre raison sociale, telle que sur les avis", self.loueur)
-        f.addRow("Votre SIRET (colonne SIRET du CSV)", self.siret)
+        f.addRow("Votre SIRET", self.siret)
         f.addRow("Délai de désignation (jours)", self.delai)
         f.addRow("Alerter quand l'échéance est à moins de (jours)", self.alerte)
         self.delai_fps = QSpinBox()
@@ -167,7 +167,7 @@ class SettingsPage(QWidget):
         b.addStretch()
         lay.addLayout(b)
         hint = QLabel("Par défaut : modèle CSV officiel ANTAI (18 colonnes, 100 désignations max par fichier). "
-                      "« Raison sociale désignant » = le titulaire inscrit sur l'avis (vous), « SIRET » = votre SIRET ; "
+                      "« Raison sociale désignant » = le titulaire inscrit sur l'avis (vous), « SIRET » = celui de la société désignée (vide pour une personne) ; "
                       "une entreprise désignée a la civilité SOCIETE et sa raison sociale dans « Nom ou Raison sociale ». "
                       "Si l'ANTAI change son modèle, importez simplement le nouveau fichier : les colonnes sont "
                       "associées automatiquement.")

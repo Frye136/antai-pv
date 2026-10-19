@@ -80,7 +80,7 @@ def seed():
     v = db.insert("vehicules", {"immatriculation": "GA123BC", "marque": "VOLVO"})
     pm = db.insert("clients", {"code_client": "C1", "type": "PM", "raison_sociale": "Transports Dupont",
                                "adresse": "4 bis avenue Jules Ferry", "code_postal": "8390", "ville": "Le Chesne",
-                               "email": "x@example.com"})
+                               "email": "x@example.com", "siret": "412 345 678 00012"})
     pp = db.insert("clients", {"code_client": "C2", "type": "PP", "civilite": "M", "nom": "Martin",
                                "prenom": "Paul", "date_naissance": "1980-05-01", "adresse": "1 rue Haute",
                                "code_postal": "55100", "ville": "Verdun"})
@@ -128,10 +128,21 @@ def test_pipeline(pdf: str | None):
                 "Prénom;Date de naissance;Email;N° Permis de conduire;Permis délivré le;N° Voie;Nom Voie;"
                 "Complément adresse;Code postal;Ville;Pays")
     assert text[0] == official, text[0]
-    assert text[1] == ("3999000017;GA123BC;18/02/2022;SARL LOCATION EXEMPLE;12345678900012;SOCIETE;TRANSPORTS DUPONT;"
+    # SIRET = celui de la société désignée ; vide pour une personne (refus ANTAI « civilité M./MME avec un SIRET »)
+    assert text[1] == ("3999000017;GA123BC;18/02/2022;SARL LOCATION EXEMPLE;41234567800012;SOCIETE;TRANSPORTS DUPONT;"
                        ";;x@example.com;;;4 bis;AVENUE JULES FERRY;;08390;LE CHESNE;FRANCE"), text[1]
-    assert text[2] == ("1111111111;GA123BC;20/02/2022;SARL LOCATION EXEMPLE;12345678900012;M.;MARTIN;Paul;"
+    assert text[2] == ("1111111111;GA123BC;20/02/2022;SARL LOCATION EXEMPLE;;M.;MARTIN;Paul;"
                        "01/05/1980;;;;1;RUE HAUTE;;55100;VERDUN;FRANCE"), text[2]
+    # ancien format enregistré (colonne SIRET = SIRET du loueur) : corrigé automatiquement
+    import json
+    old = antai_export.template()
+    for col in old["columns"]:
+        if col["titre"] == "SIRET":
+            col["champ"] = "designant_siret"
+    db.set_setting("export_template", json.dumps(old))
+    assert [c["champ"] for c in antai_export.template()["columns"] if c["titre"] == "SIRET"] == ["siret"]
+    from app import referentiel
+    assert [referentiel.coerce("clients", "civilite", "civilite", v) for v in ("Monsieur", "MR", "m.", "Madame")]         == ["M", "M", "M", "MME"]
     assert db.q1("SELECT statut FROM pv WHERE id=?", (pv_id,))["statut"] == "EXPORTE"
 
 

@@ -18,7 +18,7 @@ FIELDS = {
         ("type", "Type (PM/PP)", "type_client"),
         ("raison_sociale", "Raison sociale", "text"),
         ("siret", "SIRET", "text"),
-        ("civilite", "Civilité", "text"),
+        ("civilite", "Civilité", "civilite"),
         ("nom", "Nom", "text"),
         ("prenom", "Prénom", "text"),
         ("date_naissance", "Date de naissance", "date"),
@@ -51,7 +51,7 @@ FIELDS = {
     ],
     "conducteurs": [
         ("matricule", "Matricule", "text"),
-        ("civilite", "Civilité", "text"),
+        ("civilite", "Civilité", "civilite"),
         ("nom", "Nom", "text"),
         ("prenom", "Prénom", "text"),
         ("date_naissance", "Date de naissance", "date"),
@@ -199,6 +199,10 @@ def coerce(table: str, col: str, kind: str, v):
             return None
     if kind == "traitement":  # « oui » / PAIEMENT = on paie et on refacture au lieu de désigner
         return "PAIEMENT" if _key(v) in ("1", "oui", "o", "x", "paiement", "payer", "refacturer", "true") else None
+    if kind == "civilite":  # « Monsieur », « M. », « MR », « Mme »… -> M / MME
+        k = _key(v)
+        return {"m": "M", "mr": "M", "monsieur": "M", "h": "M", "homme": "M", "mme": "MME", "madame": "MME",
+                "mlle": "MME", "mademoiselle": "MME", "f": "MME", "femme": "MME"}.get(k, str(v).upper())
     if kind == "type_client":
         k = _key(v)
         return "PP" if k in ("pp", "particulier", "personne physique", "physique") else "PM"

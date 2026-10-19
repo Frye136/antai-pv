@@ -306,7 +306,7 @@ def identify(pv_id: int, force: bool = False) -> str:
     anomalies = [a for a in (pv["anomalie"] or "").split("; ")
                  if a and not a.startswith(("locataire", "véhicule", "plusieurs contrats", "plaque lue", "fiche",
                                             "avis", "FPS", "données", "n° de permis", "immatriculation",
-                                            "chauffeur"))]
+                                            "chauffeur", "SIRET"))]
 
     immat = plates.normalize(pv["immatriculation"])
     veh = db.q1("SELECT * FROM vehicules WHERE immatriculation=?", (immat,)) if immat else None
