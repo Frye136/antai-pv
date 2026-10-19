@@ -42,7 +42,13 @@ jobs:
         run: |
           $out = Join-Path $env:TEMP "antaipv_diagnostic.txt"
           Remove-Item $out -ErrorAction SilentlyContinue
-          $p = Start-Process dist/AntaiPV.exe -ArgumentList "--diagnostic","--quiet" -PassThru -Wait
+          # délai maximum : un plantage au démarrage ouvre une boîte de dialogue qui bloquerait indéfiniment
+          $p = Start-Process dist/AntaiPV.exe -ArgumentList "--diagnostic","--quiet" -PassThru
+          if (-not $p.WaitForExit(120000)) {
+            Get-Process AntaiPV -ErrorAction SilentlyContinue | Select-Object Id, MainWindowTitle | Format-Table | Out-String
+            Get-Process AntaiPV -ErrorAction SilentlyContinue | Stop-Process -Force
+            throw "AntaiPV.exe ne s'est pas terminé en 2 minutes (plantage au démarrage ?)"
+          }
           $v = python -c "from app import config; print(config.VERSION)"
           if (-not (Test-Path $out) -or -not ((Get-Content $out -Raw) -match "v$v")) {
             throw "AntaiPV.exe ne démarre pas correctement (code $($p.ExitCode))"
